@@ -48,8 +48,8 @@ resource "aws_iam_role" "ssm_rds_scheduler" {
   })
 }
 
-# checkov:skip=CKV_AWS_355: "*" in role policy is for example testing only
-# checkov:skip=CKV_AWS_356: "*" in role policy is for example testing only
+# checkov:skip=CKV_AWS_355: wildcard in role policy is for example testing only
+# checkov:skip=CKV_AWS_356: wildcard in role policy is for example testing only
 resource "aws_iam_role_policy" "ssm_rds_scheduler" {
   name = "rds-scheduled-stop-start"
   role = aws_iam_role.ssm_rds_scheduler.id
