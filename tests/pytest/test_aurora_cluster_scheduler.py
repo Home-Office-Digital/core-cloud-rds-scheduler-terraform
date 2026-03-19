@@ -72,15 +72,19 @@ def test_has_schedule_tag_true_and_false(monkeypatch):
     mod = load_module()
 
     class FakeClient:
-        def list_tags_for_resource(self, ResourceName):
+        def list_tags_for_resource(self, resource_name=None, **kwargs):
+            # Accept either positional or the AWS-style keyword 'ResourceName'
+            _ = resource_name if resource_name is not None else kwargs.get("ResourceName")
             return {"TagList": [{"Key": "Schedule", "Value": "*"}]}
 
     c = FakeClient()
     assert mod.has_schedule_tag(c, "arn:aws:rds:us-east-1:1:cluster:c1", "Schedule") is True
 
     class BadClient:
-        def list_tags_for_resource(self, ResourceName):
-            raise Exception("boom")
+        def list_tags_for_resource(self, resource_name=None, **kwargs):
+            # Intentionally raise a specific error type for the test
+            _ = resource_name if resource_name is not None else kwargs.get("ResourceName")
+            raise RuntimeError("boom")
 
     assert mod.has_schedule_tag(BadClient(), "arn", "Schedule") is False
 
@@ -99,10 +103,13 @@ def test_perform_action_with_retry_success(monkeypatch):
             class InvalidDBClusterStateFault(Exception):
                 pass
 
-        def start_db_cluster(self, DBClusterIdentifier):
+        def start_db_cluster(self, db_cluster_identifier=None, **kwargs):
+            # Accept the AWS 'DBClusterIdentifier' kwarg name as well
+            _ = db_cluster_identifier if db_cluster_identifier is not None else kwargs.get("DBClusterIdentifier")
             self.calls += 1
 
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier if db_cluster_identifier is not None else kwargs.get("DBClusterIdentifier")
             return {"DBClusters": [{"Status": "starting"}]}
 
     fake = FakeClient()
@@ -125,12 +132,16 @@ def test_perform_action_with_retry_transient_then_success(monkeypatch):
             class InvalidDBClusterStateFault(Exception):
                 pass
 
-        def start_db_cluster(self, DBClusterIdentifier):
+        def start_db_cluster(self, db_cluster_identifier=None, **kwargs):
+            # Accept the AWS 'DBClusterIdentifier' kwarg name as well
+            _ = db_cluster_identifier if db_cluster_identifier is not None else kwargs.get("DBClusterIdentifier")
             self.calls += 1
             if self.calls < 3:
-                raise Exception("transient")
+                # Use a specific exception type for transient failures
+                raise RuntimeError("transient")
 
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier if db_cluster_identifier is not None else kwargs.get("DBClusterIdentifier")
             return {"DBClusters": [{"Status": "starting"}]}
 
     fake = FakeClient()
@@ -147,16 +158,19 @@ def test_perform_action_with_retry_transient_fail(monkeypatch):
 
     class FakeClient:
         def __init__(self):
-            pass
+            # No initialization necessary for this fake client
+            return None
 
         class exceptions:
             class InvalidDBClusterStateFault(Exception):
                 pass
 
-        def start_db_cluster(self, DBClusterIdentifier):
-            raise Exception("always fail")
+        def start_db_cluster(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
+            raise RuntimeError("always fail")
 
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             return {"DBClusters": [{"Status": "starting"}]}
 
     fake = FakeClient()
@@ -176,13 +190,15 @@ def test_perform_action_with_retry_invalid_state_fault(monkeypatch):
 
     class FakeClient:
         def __init__(self):
-            pass
+            # No-op constructor for this fake client used in process_cluster tests
+            return None
 
         class exceptions:
             class InvalidDBClusterStateFault(Exception):
                 pass
 
-        def stop_db_cluster(self, DBClusterIdentifier):
+        def stop_db_cluster(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             raise FakeClient.exceptions.InvalidDBClusterStateFault("bad state")
 
     fake = FakeClient()
@@ -202,7 +218,8 @@ def test_process_cluster_start_and_stop(monkeypatch):
 
     # Start from stopped -> processed
     class FakeClientStart:
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             return {"DBClusters": [{"Status": mod.STATUS_STOPPED}]}
 
     monkeypatch.setattr(mod, "perform_action_with_retry", lambda c, cid, action: mod.STATUS_STARTING)
@@ -211,7 +228,8 @@ def test_process_cluster_start_and_stop(monkeypatch):
 
     # Stop from available -> processed
     class FakeClientStop:
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             return {"DBClusters": [{"Status": mod.STATUS_AVAILABLE}]}
 
     monkeypatch.setattr(mod, "perform_action_with_retry", lambda c, cid, action: mod.STATUS_STOPPING)
@@ -226,7 +244,8 @@ def test_process_cluster_invalid_transitions(monkeypatch):
     mod = load_module()
 
     class FakeClient:
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             return {"DBClusters": [{"Status": mod.STATUS_AVAILABLE}]}
 
     # Attempt to start when already available -> skipped
@@ -234,7 +253,8 @@ def test_process_cluster_invalid_transitions(monkeypatch):
     assert res["outcome"] == "skipped"
 
     class FakeClient2:
-        def describe_db_clusters(self, DBClusterIdentifier):
+        def describe_db_clusters(self, db_cluster_identifier=None, **kwargs):
+            _ = db_cluster_identifier
             return {"DBClusters": [{"Status": "foo"}]}
 
     res2 = mod.process_cluster(FakeClient2(), "c2", mod.ACTION_STOP)
@@ -263,15 +283,17 @@ def test_handler_end_to_end(monkeypatch):
 
     class FakeClient:
         def __init__(self):
-            pass
+            # No initialization required for this fake client; methods drive behavior
+            return None
 
         def get_paginator(self, name):
             return Paginator()
 
-        def list_tags_for_resource(self, ResourceName):
-            if ResourceName == "arn:1":
+        def list_tags_for_resource(self, resource_name=None, **kwargs):
+            _ = resource_name if resource_name is not None else kwargs.get("ResourceName")
+            if _ == "arn:1":
                 return {"TagList": [{"Key": "Schedule", "Value": "*"}]}
-            if ResourceName == "arn:3":
+            if _ == "arn:3":
                 return {"TagList": []}
             return {"TagList": []}
 
