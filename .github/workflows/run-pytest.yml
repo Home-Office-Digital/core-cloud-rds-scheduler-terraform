@@ -1,0 +1,41 @@
+name: pytest
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest coverage
+
+      - name: Run tests with coverage
+        run: |
+          mkdir -p test-artifacts
+          coverage run -m pytest -q | tee test-artifacts/pytest.log
+          coverage xml -o test-artifacts/coverage.xml
+          coverage report -m
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: test-artifacts
