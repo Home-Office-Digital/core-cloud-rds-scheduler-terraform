@@ -1,0 +1,6 @@
+.terraform/
+
+# Ignore Python bytecode caches
+scripts/__pycache__/
+tests/__pycache__/
+tests/pytest/__pycache__/

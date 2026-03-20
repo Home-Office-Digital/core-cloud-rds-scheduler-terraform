@@ -104,6 +104,24 @@ terraform test            # run all tests
 terraform test -verbose   # show each assertion
 ```
 
+### Python tests (pytest)
+
+This repository now includes a pytest suite that validates the custom Aurora Cluster scheduler (`scripts/aurora_cluster_scheduler.py`). Tests mock AWS interactions and run locally and in CI.
+
+Run the Python tests locally:
+
+```bash
+python -m pip install --upgrade pip
+pip install pytest coverage
+pytest -q
+# or with coverage
+coverage run -m pytest
+coverage report -m
+```
+
+CI: A GitHub Actions workflow (`.github/workflows/pytest.yml`) runs the pytest suite on push/PR and uploads the test artifacts (pytest log) as a build artifact named `test-artifacts`. You can download these artifacts from the workflow run and attach the logs to your Jira ticket as evidence.
+
+
 
 ## IAM Role Requirements
 
