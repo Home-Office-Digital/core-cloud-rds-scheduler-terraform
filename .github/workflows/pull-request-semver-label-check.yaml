@@ -33,7 +33,7 @@ jobs:
 
       - name: Calculate SemVer value
         id: calculate
-        uses: Home-Office-Digital/semver-calculate-action@fd7e1629eda3b5d3cd037d4145d49db12a352c8e
+        uses: UKHomeOffice/semver-calculate-action@fd7e1629eda3b5d3cd037d4145d49db12a352c8e
         with:
           increment: ${{ steps.label.outputs.matchedLabels }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
