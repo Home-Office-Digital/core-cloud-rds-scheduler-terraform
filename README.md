@@ -5,7 +5,7 @@ Terraform module that automatically stops and starts RDS instances and Aurora cl
 ## Usage
 ```hcl
 module "rds_scheduled_stop_start" {
-  source = "git::https://github.com/UKHomeOffice/core-cloud-rds-scheduled-terraform.git?ref=v1.0.0"
+  source = "git::https://github.com/Home-Office-Digital/core-cloud-rds-scheduled-terraform.git?ref=v1.0.0"
 
   name_prefix        = "cc-rds-scheduler"
   automation_role_arn = aws_iam_role.ssm_rds_scheduler.arn

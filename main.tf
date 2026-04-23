@@ -11,6 +11,7 @@
 # - RDS Instances: Uses AWS managed documents (AWS-StartRdsInstance/AWS-StopRdsInstance)
 # - Aurora Clusters: Uses a custom SSM Automation Document (clusters can't be
 #   targeted by tag natively)
+# Dummy line to trigger
 ################################################################################
 
 locals {
