@@ -26,14 +26,14 @@ jobs:
 
       - name: Parse the SemVer label
         id: label
-        uses: UKHomeOffice/match-label-action@a8e8e2690df0a1f72550875a29a73574fdefe5ad
+        uses: Home-Office-Digital/match-label-action@a8e8e2690df0a1f72550875a29a73574fdefe5ad
         with:
           labels: minor,major,patch
           mode: singular
 
       - name: Calculate SemVer value
         id: calculate
-        uses: UKHomeOffice/semver-calculate-action@fd7e1629eda3b5d3cd037d4145d49db12a352c8e
+        uses: Home-Office-Digital/semver-calculate-action@fd7e1629eda3b5d3cd037d4145d49db12a352c8e
         with:
           increment: ${{ steps.label.outputs.matchedLabels }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
