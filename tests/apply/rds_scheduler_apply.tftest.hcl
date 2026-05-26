@@ -16,9 +16,9 @@ run "apply_creates_expected_resources" {
     # terraform test doesn't provide a built-in RNG without adding providers to
     # the module itself. For local runs, set TF_VAR_name_prefix to a unique
     # value if you hit collisions.
-    name_prefix         = "test-rds-scheduler"
-  # Provide via TF_VAR_automation_role_arn in CI/local (should exist in the
-  # target account and be pass-role allowed).
+    name_prefix = "test-rds-scheduler"
+    # Provide via TF_VAR_automation_role_arn in CI/local (should exist in the
+    # target account and be pass-role allowed).
     automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
@@ -64,28 +64,28 @@ run "apply_creates_expected_resources" {
   # Weekday keys exist in all four association maps.
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.start_rds_instances), d)
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.start_rds_instances), d)
     ])
     error_message = "start_rds_instances must include keys MON-FRI"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.stop_rds_instances), d)
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.stop_rds_instances), d)
     ])
     error_message = "stop_rds_instances must include keys MON-FRI"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.start_aurora_clusters), d)
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.start_aurora_clusters), d)
     ])
     error_message = "start_aurora_clusters must include keys MON-FRI"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.stop_aurora_clusters), d)
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : contains(keys(aws_ssm_association.stop_aurora_clusters), d)
     ])
     error_message = "stop_aurora_clusters must include keys MON-FRI"
   }
@@ -96,35 +96,35 @@ run "apply_creates_expected_resources" {
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.start_rds_instances[d].schedule_expression == "cron(5 9 ? * ${d} *)"
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.start_rds_instances[d].schedule_expression == "cron(5 9 ? * ${d} *)"
     ])
     error_message = "Start RDS schedule_expression must match cron(5 9 ? * <DAY> *)"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.stop_rds_instances[d].schedule_expression == "cron(55 19 ? * ${d} *)"
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.stop_rds_instances[d].schedule_expression == "cron(55 19 ? * ${d} *)"
     ])
     error_message = "Stop RDS schedule_expression must match cron(55 19 ? * <DAY> *)"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.start_aurora_clusters[d].schedule_expression == "cron(15 9 ? * ${d} *)"
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.start_aurora_clusters[d].schedule_expression == "cron(15 9 ? * ${d} *)"
     ])
     error_message = "Start Aurora schedule_expression must match cron(15 9 ? * <DAY> *)"
   }
 
   assert {
     condition = alltrue([
-  for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.stop_aurora_clusters[d].schedule_expression == "cron(45 19 ? * ${d} *)"
+      for d in ["MON", "TUE", "WED", "THU", "FRI"] : aws_ssm_association.stop_aurora_clusters[d].schedule_expression == "cron(45 19 ? * ${d} *)"
     ])
     error_message = "Stop Aurora schedule_expression must match cron(45 19 ? * <DAY> *)"
   }
 
   # General pattern validation (defensive)
   assert {
-  condition     = length(regexall("^cron\\(\\d{1,2}\\s+\\d{1,2}\\s+\\?\\s+\\*\\s+(MON|TUE|WED|THU|FRI)\\s+\\*\\)$", aws_ssm_association.start_rds_instances["MON"].schedule_expression)) == 1
+    condition     = length(regexall("^cron\\(\\d{1,2}\\s+\\d{1,2}\\s+\\?\\s+\\*\\s+(MON|TUE|WED|THU|FRI)\\s+\\*\\)$", aws_ssm_association.start_rds_instances["MON"].schedule_expression)) == 1
     error_message = "schedule_expression should match cron(<minute> <hour> ? * <DAY> *)"
   }
 
@@ -134,34 +134,34 @@ run "apply_creates_expected_resources" {
 
   # RDS associations use AWS managed docs
   assert {
-  condition     = aws_ssm_association.start_rds_instances["MON"].name == "AWS-StartRdsInstance"
+    condition     = aws_ssm_association.start_rds_instances["MON"].name == "AWS-StartRdsInstance"
     error_message = "RDS start associations must use AWS-StartRdsInstance"
   }
 
   assert {
-  condition     = aws_ssm_association.stop_rds_instances["MON"].name == "AWS-StopRdsInstance"
+    condition     = aws_ssm_association.stop_rds_instances["MON"].name == "AWS-StopRdsInstance"
     error_message = "RDS stop associations must use AWS-StopRdsInstance"
   }
 
   # Aurora associations reference custom doc
   assert {
-  condition     = aws_ssm_association.start_aurora_clusters["MON"].name == aws_ssm_document.aurora_cluster_scheduler.name
+    condition     = aws_ssm_association.start_aurora_clusters["MON"].name == aws_ssm_document.aurora_cluster_scheduler.name
     error_message = "Aurora start associations must reference the custom SSM document"
   }
 
   assert {
-  condition     = aws_ssm_association.stop_aurora_clusters["MON"].name == aws_ssm_document.aurora_cluster_scheduler.name
+    condition     = aws_ssm_association.stop_aurora_clusters["MON"].name == aws_ssm_document.aurora_cluster_scheduler.name
     error_message = "Aurora stop associations must reference the custom SSM document"
   }
 
   # automation_target_parameter_name
   assert {
-  condition     = aws_ssm_association.start_rds_instances["MON"].automation_target_parameter_name == "InstanceId"
+    condition     = aws_ssm_association.start_rds_instances["MON"].automation_target_parameter_name == "InstanceId"
     error_message = "RDS associations must set automation_target_parameter_name to InstanceId"
   }
 
   assert {
-  condition     = aws_ssm_association.start_aurora_clusters["MON"].automation_target_parameter_name == "TargetKey"
+    condition     = aws_ssm_association.start_aurora_clusters["MON"].automation_target_parameter_name == "TargetKey"
     error_message = "Aurora associations must set automation_target_parameter_name to TargetKey"
   }
 
@@ -169,8 +169,8 @@ run "apply_creates_expected_resources" {
   assert {
     condition = alltrue([
       for d in ["MON", "TUE", "WED", "THU", "FRI"] : (
-  try(aws_ssm_association.start_rds_instances[d].parameters["AutomationAssumeRole"], "") != "" &&
-  try(aws_ssm_association.stop_rds_instances[d].parameters["AutomationAssumeRole"], "") != ""
+        try(aws_ssm_association.start_rds_instances[d].parameters["AutomationAssumeRole"], "") != "" &&
+        try(aws_ssm_association.stop_rds_instances[d].parameters["AutomationAssumeRole"], "") != ""
       )
     ])
     error_message = "All RDS associations must include AutomationAssumeRole"
@@ -178,35 +178,35 @@ run "apply_creates_expected_resources" {
 
   assert {
     condition = (
-  aws_ssm_association.start_aurora_clusters["MON"].parameters["AutomationAssumeRole"] != "" &&
-  aws_ssm_association.start_aurora_clusters["MON"].parameters["Action"] == "Start" &&
-  aws_ssm_association.start_aurora_clusters["MON"].parameters["ScheduleTagKey"] == "Schedule"
+      aws_ssm_association.start_aurora_clusters["MON"].parameters["AutomationAssumeRole"] != "" &&
+      aws_ssm_association.start_aurora_clusters["MON"].parameters["Action"] == "Start" &&
+      aws_ssm_association.start_aurora_clusters["MON"].parameters["ScheduleTagKey"] == "Schedule"
     )
     error_message = "Aurora start association must include AutomationAssumeRole/Action/ScheduleTagKey"
   }
 
   assert {
     condition = (
-  aws_ssm_association.stop_aurora_clusters["MON"].parameters["AutomationAssumeRole"] != "" &&
-  aws_ssm_association.stop_aurora_clusters["MON"].parameters["Action"] == "Stop" &&
-  aws_ssm_association.stop_aurora_clusters["MON"].parameters["ScheduleTagKey"] == "Schedule"
+      aws_ssm_association.stop_aurora_clusters["MON"].parameters["AutomationAssumeRole"] != "" &&
+      aws_ssm_association.stop_aurora_clusters["MON"].parameters["Action"] == "Stop" &&
+      aws_ssm_association.stop_aurora_clusters["MON"].parameters["ScheduleTagKey"] == "Schedule"
     )
     error_message = "Aurora stop association must include AutomationAssumeRole/Action/ScheduleTagKey"
   }
 
   # targeting config
   assert {
-  condition     = aws_ssm_association.start_rds_instances["MON"].targets[0].key == "tag-key"
+    condition     = aws_ssm_association.start_rds_instances["MON"].targets[0].key == "tag-key"
     error_message = "RDS associations must target by tag-key"
   }
 
   assert {
-  condition     = contains(aws_ssm_association.start_rds_instances["MON"].targets[0].values, "Schedule")
+    condition     = contains(aws_ssm_association.start_rds_instances["MON"].targets[0].values, "Schedule")
     error_message = "RDS associations must include schedule tag key in targets"
   }
 
   assert {
-  condition     = aws_ssm_association.start_aurora_clusters["MON"].targets[0].key == "ParameterValues"
+    condition     = aws_ssm_association.start_aurora_clusters["MON"].targets[0].key == "ParameterValues"
     error_message = "Aurora associations must use ParameterValues target hack"
   }
 
@@ -215,27 +215,27 @@ run "apply_creates_expected_resources" {
   # ---------------------------------------------------------------------------
 
   assert {
-  condition     = aws_ssm_document.aurora_cluster_scheduler.name != ""
+    condition     = aws_ssm_document.aurora_cluster_scheduler.name != ""
     error_message = "SSM document must exist"
   }
 
   assert {
-  condition     = aws_ssm_document.aurora_cluster_scheduler.document_type == "Automation"
+    condition     = aws_ssm_document.aurora_cluster_scheduler.document_type == "Automation"
     error_message = "SSM document type must be Automation"
   }
 
   assert {
-  condition     = length(regexall("\\\"Action\\\"", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
+    condition     = length(regexall("\\\"Action\\\"", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
     error_message = "SSM document content should contain an Action parameter"
   }
 
   assert {
-  condition     = length(regexall("\\\"allowedValues\\\"\\s*:\\s*\\[\\s*\\\"Start\\\"\\s*,\\s*\\\"Stop\\\"\\s*\\]", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
+    condition     = length(regexall("\\\"allowedValues\\\"\\s*:\\s*\\[\\s*\\\"Start\\\"\\s*,\\s*\\\"Stop\\\"\\s*\\]", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
     error_message = "SSM document Action parameter must allow Start/Stop"
   }
 
   assert {
-  condition     = length(regexall("\\\"ScheduleTagKey\\\"", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
+    condition     = length(regexall("\\\"ScheduleTagKey\\\"", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
     error_message = "SSM document content should contain ScheduleTagKey parameter"
   }
 
@@ -275,7 +275,7 @@ run "reapply_is_idempotent" {
 
   variables {
     name_prefix         = "test-rds-scheduler"
-  automation_role_arn = var.automation_role_arn
+    automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
     start_rds_hour      = 9

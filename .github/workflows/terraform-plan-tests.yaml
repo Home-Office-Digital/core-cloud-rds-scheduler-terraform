@@ -9,7 +9,11 @@ on:
 
 permissions:
   contents: read
-  
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   terraform-plan-tests:
     name: terraform validate/test (plan)
