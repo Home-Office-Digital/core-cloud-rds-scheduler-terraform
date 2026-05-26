@@ -1,0 +1,38 @@
+name: Terraform Plan/Validate Tests
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  
+jobs:
+  terraform-plan-tests:
+    name: terraform validate/test (plan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.0
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init -backend=false -input=false -no-color
+
+      - name: Terraform validate
+        run: terraform validate -no-color
+
+      - name: Terraform test (plan)
+        run: terraform test -no-color
