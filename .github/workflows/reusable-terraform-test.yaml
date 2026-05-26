@@ -1,0 +1,317 @@
+name: Terraform Tests Reusable
+
+on:
+  workflow_call:
+    inputs:
+      modules_root:
+        description: Root directory containing Terraform modules
+        required: false
+        type: string
+        default: modules
+      terraform_version:
+        description: Terraform CLI version
+        required: false
+        type: string
+        default: 1.9.8
+      comment_on_pr:
+        description: Post Terraform test summary comment on pull requests
+        required: false
+        type: boolean
+        default: true
+      pull_request_number:
+        description: Pull request number passed by caller workflow
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  discover-modules:
+    name: Discover testable modules
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.discover.outputs.modules }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Discover Terraform test modules
+      id: discover
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        root="${{ inputs.modules_root }}"
+
+        if [[ ! -d "$root" ]]; then
+          echo "modules=[]" >> "$GITHUB_OUTPUT"
+          echo "Modules root '$root' does not exist."
+          exit 0
+        fi
+
+        modules_json="$({
+          find "$root" -mindepth 1 -maxdepth 1 -type d | while read -r module; do
+            if find "$module" -maxdepth 3 -type f -name "*.tftest.hcl" | grep -q .; then
+              echo "$module"
+            fi
+          done
+        } | jq -Rsc 'split("\n") | map(select(length > 0))')"
+
+        echo "modules=${modules_json}" >> "$GITHUB_OUTPUT"
+        echo "Discovered modules: ${modules_json}"
+
+    - name: Report module test coverage
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        root="${{ inputs.modules_root }}"
+        if [[ -d "$root" ]]; then
+          total_modules=$(find "$root" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+        else
+          total_modules=0
+        fi
+        tested_modules=$(echo '${{ steps.discover.outputs.modules }}' | jq 'length')
+        coverage=$(awk -v t="$total_modules" -v m="$tested_modules" 'BEGIN { if (t==0) printf "0.00"; else printf "%.2f", (m/t)*100 }')
+
+        echo "### Terraform module test coverage: ${tested_modules}/${total_modules} (${coverage}%)" >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-test:
+    name: Terraform test
+    runs-on: ubuntu-latest
+    needs: discover-modules
+    if: needs.discover-modules.outputs.modules != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.discover-modules.outputs.modules) }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+        terraform_wrapper: false
+
+    - name: Terraform init
+      run: terraform -chdir=${{ matrix.module }} init -backend=false
+
+    - name: Terraform validate
+      run: terraform -chdir=${{ matrix.module }} validate
+
+    - name: Terraform test with JSON output
+      id: tf_test
+      run: |
+        set +e
+
+        module_name="$(basename "${{ matrix.module }}")"
+        module_slug="$(echo "${{ matrix.module }}" | tr '/' '-')"
+        mkdir -p test-results
+
+        terraform -chdir=${{ matrix.module }} test -json \
+          > "test-results/${module_slug}-terraform-test.json"
+
+        exit_code=$?
+
+        if [ ! -s "test-results/${module_slug}-terraform-test.json" ]; then
+          echo '{"type":"test_summary","status":"error","message":"Terraform test produced no JSON output"}' \
+            > "test-results/${module_slug}-terraform-test.json"
+        fi
+
+        summary_line=$(jq -cr 'select(.type=="test_summary") | .test_summary' "test-results/${module_slug}-terraform-test.json" | tail -n 1)
+        if [[ -n "${summary_line}" ]]; then
+          status=$(echo "${summary_line}" | jq -r '.status // "unknown"')
+          passed=$(echo "${summary_line}" | jq -r '.passed // 0')
+          failed=$(echo "${summary_line}" | jq -r '.failed // 0')
+          errored=$(echo "${summary_line}" | jq -r '.errored // 0')
+          skipped=$(echo "${summary_line}" | jq -r '.skipped // 0')
+          echo "### ${module_name}: ${status}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Passed: ${passed}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Failed: ${failed}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Errored: ${errored}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Skipped: ${skipped}" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+        exit "$exit_code"
+
+    - name: Prepare artifact name
+      id: artifact
+      if: always()
+      run: |
+        module_slug="$(echo "${{ matrix.module }}" | tr '/' '-')"
+        echo "name=terraform-test-results-${module_slug}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload Terraform test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: test-results/*.json
+        if-no-files-found: warn
+
+  no-test-modules:
+    name: No Terraform tests found
+    runs-on: ubuntu-latest
+    needs: discover-modules
+    if: needs.discover-modules.outputs.modules == '[]'
+    steps:
+    - name: Skip
+      run: echo "No modules with Terraform tests (*.tftest.hcl) were found under ${{ inputs.modules_root }}/*/."
+
+  comment-test-results:
+    name: Comment Terraform test results on PR
+    runs-on: ubuntu-latest
+    needs:
+    - discover-modules
+    - terraform-test
+    - no-test-modules
+    if: inputs.comment_on_pr && always()
+    steps:
+    - name: Download Terraform test artifacts
+      if: needs.discover-modules.outputs.modules != '[]'
+      uses: actions/download-artifact@v4
+      with:
+        pattern: terraform-test-results-*
+        path: terraform-test-results
+        merge-multiple: true
+
+    - name: Build and publish PR comment
+      uses: actions/github-script@v7
+      env:
+        MODULES_JSON: ${{ needs.discover-modules.outputs.modules }}
+        PR_NUMBER: ${{ inputs.pull_request_number }}
+        EVENT_NAME: ${{ github.event_name }}
+        GITHUB_SHA: ${{ github.sha }}
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+
+          const marker = '<!-- terraform-test-results -->';
+          const modules = JSON.parse(process.env.MODULES_JSON || '[]');
+
+          let body = `${marker}\n## Terraform Test Results\n`;
+
+          if (modules.length === 0) {
+            body += '\nNo Terraform test modules were discovered in this PR context.';
+          } else {
+            const root = 'terraform-test-results';
+            const files = fs.existsSync(root)
+              ? fs.readdirSync(root).filter((f) => f.endsWith('.json'))
+              : [];
+
+            if (files.length === 0) {
+              body += '\nNo Terraform test result artifacts were found.';
+            } else {
+              const rows = [];
+              let totalPassed = 0;
+              let totalFailed = 0;
+              let totalErrored = 0;
+              let totalSkipped = 0;
+              const statusWithIcon = (status) => {
+                if (status === 'pass') return ':white_check_mark: pass';
+                if (status === 'fail' || status === 'error') return ':x: ' + status;
+                return ':warning: ' + (status ?? 'unknown');
+              };
+
+              for (const file of files.sort()) {
+                const moduleName = file.replace('-terraform-test.json', '');
+                const fullPath = path.join(root, file);
+                const lines = fs.readFileSync(fullPath, 'utf8').split(/\r?\n/).filter(Boolean);
+
+                let summary = null;
+                for (const line of lines) {
+                  try {
+                    const event = JSON.parse(line);
+                    if (event.type === 'test_summary' && event.test_summary) {
+                      summary = event.test_summary;
+                    }
+                  } catch (e) {
+                    // Ignore malformed lines and continue.
+                  }
+                }
+
+                if (!summary) {
+                  rows.push(`| ${moduleName} | :x: error | n/a | n/a | n/a | n/a |`);
+                  totalErrored += 1;
+                  continue;
+                }
+
+                totalPassed += Number(summary.passed ?? 0);
+                totalFailed += Number(summary.failed ?? 0);
+                totalErrored += Number(summary.errored ?? 0);
+                totalSkipped += Number(summary.skipped ?? 0);
+
+                rows.push(
+                  `| ${moduleName} | ${statusWithIcon(summary.status)} | ${summary.passed ?? 0} | ${summary.failed ?? 0} | ${summary.errored ?? 0} | ${summary.skipped ?? 0} |`
+                );
+              }
+
+              const overallOk = totalFailed === 0 && totalErrored === 0;
+              const overallIcon = overallOk ? ':white_check_mark:' : ':x:';
+              body += `\n${overallIcon} Overall: passed=${totalPassed}, failed=${totalFailed}, errored=${totalErrored}, skipped=${totalSkipped}`;
+
+              body += '\n| Module | Status | Passed | Failed | Errored | Skipped |';
+              body += '\n|---|---:|---:|---:|---:|---:|';
+              body += `\n${rows.join('\n')}`;
+            }
+          }
+
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          let issue_number = Number(
+            process.env.PR_NUMBER ||
+            context.payload.pull_request?.number ||
+            context.issue.number ||
+            0
+          );
+
+          // For push-triggered caller runs, resolve an open PR from commit SHA.
+          if (!issue_number && process.env.EVENT_NAME === 'push' && process.env.GITHUB_SHA) {
+            const associated = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: process.env.GITHUB_SHA,
+            });
+
+            const openPr = associated.data.find((pr) => pr.state === 'open');
+            if (openPr) {
+              issue_number = Number(openPr.number);
+            }
+          }
+
+          if (!issue_number) {
+            core.notice('No pull request context found for this run. Skipping PR comment.');
+            return;
+          }
+
+          const comments = await github.paginate(github.rest.issues.listComments, {
+            owner,
+            repo,
+            issue_number,
+            per_page: 100,
+          });
+
+          const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+          }
