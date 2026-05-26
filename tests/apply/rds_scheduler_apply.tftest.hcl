@@ -4,6 +4,10 @@
 # - Requires AWS credentials + region in CI
 # - Does NOT depend on any real RDS/Aurora resources existing
 
+variables {
+  automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role"
+}
+
 run "apply_creates_expected_resources" {
   command = apply
 
@@ -13,7 +17,9 @@ run "apply_creates_expected_resources" {
     # the module itself. For local runs, set TF_VAR_name_prefix to a unique
     # value if you hit collisions.
     name_prefix         = "test-rds-scheduler"
-  automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role"
+  # Provide via TF_VAR_automation_role_arn in CI/local (should exist in the
+  # target account and be pass-role allowed).
+    automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
     # Use non-default values so schedule assertions are deterministic.
@@ -269,7 +275,7 @@ run "reapply_is_idempotent" {
 
   variables {
     name_prefix         = "test-rds-scheduler"
-  automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role"
+  automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
     start_rds_hour      = 9
