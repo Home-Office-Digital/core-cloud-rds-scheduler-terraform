@@ -39,4 +39,5 @@ jobs:
         env:
           AWS_REGION: eu-west-2
           TF_VAR_name_prefix: test-rds-scheduler-${{ github.run_id }}-${{ github.run_attempt }}
+          TF_VAR_automation_role_arn: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
         run: terraform test -test-directory=./tests/apply -verbose
