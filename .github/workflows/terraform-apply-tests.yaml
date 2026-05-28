@@ -54,6 +54,14 @@ jobs:
             FAILED=$(grep -Eic '^[[:space:]]*tests/.*\.tftest\.hcl\.\.\.[[:space:]]+fail[[:space:]]*$' test_output.txt || echo "0")
           fi
 
+          # Defensive: ensure we always write valid single-line output values.
+          PASSED=${PASSED:-0}
+          FAILED=${FAILED:-0}
+          PASSED=$(echo "${PASSED}" | tr -dc '0-9')
+          FAILED=$(echo "${FAILED}" | tr -dc '0-9')
+          [ -n "${PASSED}" ] || PASSED=0
+          [ -n "${FAILED}" ] || FAILED=0
+
           echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
           echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
           echo "exit_code=${TEST_EXIT_CODE}" >> "$GITHUB_OUTPUT"
