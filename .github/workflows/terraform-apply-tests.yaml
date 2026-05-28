@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  pull-requests: write
 
 jobs:
   terraform-apply-tests:
@@ -36,8 +37,41 @@ jobs:
         run: terraform init -input=false -no-color
 
       - name: Terraform test (apply)
+        id: terraform-test
         env:
           AWS_REGION: eu-west-2
           TF_VAR_name_prefix: test-rds-scheduler-${{ github.run_id }}-${{ github.run_attempt }}
-          TF_VAR_automation_role_arn: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
-        run: terraform test -test-directory=./tests/apply -verbose
+        run: |
+          set +e
+          terraform test -test-directory=./tests/apply -verbose 2>&1 | tee test_output.txt
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+
+          PASSED=$(grep -c "^  run " test_output.txt | tr -d '[:space:]' || echo "0")
+          FAILED=$(grep -c "FAIL" test_output.txt | tr -d '[:space:]' || echo "0")
+
+          echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
+          echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${TEST_EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit $TEST_EXIT_CODE
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const passed = '${{ steps.terraform-test.outputs.passed }}' || '0';
+            const failed = '${{ steps.terraform-test.outputs.failed }}' || '0';
+            const exitCode = '${{ steps.terraform-test.outputs.exit_code }}';
+            const status = exitCode === '0' ? '✅ pass' : '❌ fail';
+            const overall = exitCode === '0'
+              ? `✅ Overall: passed=${passed}, failed=0, errored=0, skipped=0`
+              : `❌ Overall: passed=${passed}, failed=${failed}, errored=0, skipped=0`;
+
+            const body = `## Terraform Apply Test Results\n\n${overall}\n\n| Repo | Status | Passed | Failed |\n|--------|--------|--------|--------|\n| core-cloud-rds-scheduler-terraform | ${status} | ${passed} | ${failed} |`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });

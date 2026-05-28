@@ -56,7 +56,7 @@ jobs:
               ? `✅ Overall: passed=${passed}, failed=0, errored=0, skipped=0`
               : `❌ Overall: passed=${passed}, failed=${failed}, errored=0, skipped=0`;
 
-            const body = `## Terraform Test Results\n\n${overall}\n\n| Repo | Status | Passed | Failed |\n|--------|--------|--------|--------|\n| core-cloud-rds-scheduler-terraform | ${status} | ${passed} | ${failed} |`;
+            const body = `## Terraform Plan Test Results\n\n${overall}\n\n| Repo | Status | Passed | Failed |\n|--------|--------|--------|--------|\n| core-cloud-rds-scheduler-terraform | ${status} | ${passed} | ${failed} |`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
