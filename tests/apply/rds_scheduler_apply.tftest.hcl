@@ -12,13 +12,7 @@ run "apply_creates_expected_resources" {
   command = apply
 
   variables {
-    # NOTE: Ideally this would be a true random suffix (e.g. random_string), but
-    # terraform test doesn't provide a built-in RNG without adding providers to
-    # the module itself. For local runs, set TF_VAR_name_prefix to a unique
-    # value if you hit collisions.
     name_prefix = "test-rds-scheduler"
-    # Provide via TF_VAR_automation_role_arn in CI/local (should exist in the
-    # target account and be pass-role allowed).
     automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
@@ -122,7 +116,7 @@ run "apply_creates_expected_resources" {
     error_message = "Stop Aurora schedule_expression must match cron(45 19 ? * <DAY> *)"
   }
 
-  # General pattern validation (defensive)
+  # General pattern validation
   assert {
     condition     = length(regexall("^cron\\(\\d{1,2}\\s+\\d{1,2}\\s+\\?\\s+\\*\\s+(MON|TUE|WED|THU|FRI)\\s+\\*\\)$", aws_ssm_association.start_rds_instances["MON"].schedule_expression)) == 1
     error_message = "schedule_expression should match cron(<minute> <hour> ? * <DAY> *)"
