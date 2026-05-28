@@ -2,19 +2,6 @@
 # Without this, you'd need AWS credentials to run the tests.
 mock_provider "aws" {}
 
-# provider "aws" {
-#   region = "eu-west-2"
-# }
-# run "default_schedules_are_weekday_only" {
-#   command = apply
-
-#   assert {
-#     condition     = aws_ssm_association.start_aurora_clusters["MON"].schedule_expression == "cron(0 8 ? * MON *)"
-#     error_message = "Default Aurora start on MON should be cron(0 8 ? * MON *)"
-#   }
-# }
-
-
 
 # These variables apply to ALL run blocks in this file (unless overridden).
 # They're the minimum required inputs for our module.

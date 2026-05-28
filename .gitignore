@@ -1,4 +1,5 @@
 .terraform/
+.vscode/
 
 # Ignore Python bytecode caches
 scripts/__pycache__/
