@@ -57,10 +57,14 @@ jobs:
           # Defensive: ensure we always write valid single-line output values.
           PASSED=${PASSED:-0}
           FAILED=${FAILED:-0}
-          PASSED=$(echo "${PASSED}" | tr -dc '0-9')
-          FAILED=$(echo "${FAILED}" | tr -dc '0-9')
+          PASSED=$(printf '%s' "${PASSED}" | tr -dc '0-9')
+          FAILED=$(printf '%s' "${FAILED}" | tr -dc '0-9')
           [ -n "${PASSED}" ] || PASSED=0
           [ -n "${FAILED}" ] || FAILED=0
+
+          # Remove leading zeros (but preserve single '0').
+          PASSED=$(printf '%s' "${PASSED}" | sed -E 's/^0+([0-9])?/\1/; s/^$/0/')
+          FAILED=$(printf '%s' "${FAILED}" | sed -E 's/^0+([0-9])?/\1/; s/^$/0/')
 
           echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
           echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
