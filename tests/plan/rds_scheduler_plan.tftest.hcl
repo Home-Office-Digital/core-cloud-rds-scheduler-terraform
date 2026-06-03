@@ -253,6 +253,28 @@ run "outputs_are_populated" {
     condition     = output.ssm_document_name == "cc-test-scheduler-aurora-cluster-scheduler"
     error_message = "ssm_document_name output should match document name"
   }
+
+  # The module also outputs association IDs as weekday-keyed maps.
+  # We can't assert specific IDs in plan mode, but we can assert the shape.
+  assert {
+    condition     = length(output.instance_start_association_ids) == 5
+    error_message = "instance_start_association_ids output should contain 5 entries (one per weekday)"
+  }
+
+  assert {
+    condition     = length(output.instance_stop_association_ids) == 5
+    error_message = "instance_stop_association_ids output should contain 5 entries (one per weekday)"
+  }
+
+  assert {
+    condition     = length(output.aurora_start_association_ids) == 5
+    error_message = "aurora_start_association_ids output should contain 5 entries (one per weekday)"
+  }
+
+  assert {
+    condition     = length(output.aurora_stop_association_ids) == 5
+    error_message = "aurora_stop_association_ids output should contain 5 entries (one per weekday)"
+  }
 }
 
 
@@ -303,5 +325,53 @@ run "association_and_document_checks" {
   assert {
     condition     = length(regexall("def handler", aws_ssm_document.aurora_cluster_scheduler.content)) > 0
     error_message = "Automation document should include the embedded script (handler function)"
+  }
+}
+
+
+# TEST 10: Explicitly assert we *only* create weekday keys (no weekends)
+run "associations_are_weekdays_only" {
+  command = plan
+
+  # Shape/keyset checks — avoid relying only on length==5.
+  assert {
+    condition     = length(setsubtract(keys(aws_ssm_association.start_rds_instances), ["MON", "TUE", "WED", "THU", "FRI"])) == 0
+    error_message = "start_rds_instances should only contain weekday keys (MON-FRI)"
+  }
+
+  assert {
+    condition     = length(setsubtract(keys(aws_ssm_association.stop_rds_instances), ["MON", "TUE", "WED", "THU", "FRI"])) == 0
+    error_message = "stop_rds_instances should only contain weekday keys (MON-FRI)"
+  }
+
+  assert {
+    condition     = length(setsubtract(keys(aws_ssm_association.start_aurora_clusters), ["MON", "TUE", "WED", "THU", "FRI"])) == 0
+    error_message = "start_aurora_clusters should only contain weekday keys (MON-FRI)"
+  }
+
+  assert {
+    condition     = length(setsubtract(keys(aws_ssm_association.stop_aurora_clusters), ["MON", "TUE", "WED", "THU", "FRI"])) == 0
+    error_message = "stop_aurora_clusters should only contain weekday keys (MON-FRI)"
+  }
+
+  # Explicit negative checks for weekend keys.
+  assert {
+    condition     = !contains(keys(aws_ssm_association.start_rds_instances), "SAT") && !contains(keys(aws_ssm_association.start_rds_instances), "SUN")
+    error_message = "start_rds_instances should not include weekend associations (SAT/SUN)"
+  }
+
+  assert {
+    condition     = !contains(keys(aws_ssm_association.stop_rds_instances), "SAT") && !contains(keys(aws_ssm_association.stop_rds_instances), "SUN")
+    error_message = "stop_rds_instances should not include weekend associations (SAT/SUN)"
+  }
+
+  assert {
+    condition     = !contains(keys(aws_ssm_association.start_aurora_clusters), "SAT") && !contains(keys(aws_ssm_association.start_aurora_clusters), "SUN")
+    error_message = "start_aurora_clusters should not include weekend associations (SAT/SUN)"
+  }
+
+  assert {
+    condition     = !contains(keys(aws_ssm_association.stop_aurora_clusters), "SAT") && !contains(keys(aws_ssm_association.stop_aurora_clusters), "SUN")
+    error_message = "stop_aurora_clusters should not include weekend associations (SAT/SUN)"
   }
 }

@@ -98,10 +98,35 @@ The IAM policy restricts stop/start to resources with this tag — untagged reso
 
 ## Testing
 
+### Terraform tests: plan vs apply
+
+This repo has two Terraform test suites:
+
+- **Plan tests** in `tests/plan/rds_scheduler_plan.tftest.hcl`
+  - Use `mock_provider "aws" {}` so they **do not** require AWS credentials.
+  - Validate naming, schedules, association counts, and outputs from a `terraform plan`.
+
+- **Apply tests** in `tests/apply/rds_scheduler_apply.tftest.hcl`
+  - Use the real AWS provider and `command = apply`, so they **create real AWS resources**.
+  - Require AWS credentials and a configured AWS region.
+  - Intended for CI environments with an isolated test account.
+
+Run all Terraform tests:
+
 ```bash
-terraform init
-terraform test            # run all tests
-terraform test -verbose   # show each assertion
+terraform test
+```
+
+Run only plan tests (recommended locally):
+
+```bash
+terraform test -verbose -test-directory=tests/plan
+```
+
+Run only apply tests (requires AWS credentials/region):
+
+```bash
+terraform test -verbose -test-directory=tests/apply
 ```
 
 ### Python tests (pytest)

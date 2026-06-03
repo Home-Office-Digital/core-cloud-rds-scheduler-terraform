@@ -32,7 +32,9 @@ jobs:
         id: terraform-test
         run: |
           set +e
-          terraform test -verbose 2>&1 | tee test_output.txt
+          terraform test -verbose \
+            -test-directory=tests/plan \
+            2>&1 | tee test_output.txt
           TEST_EXIT_CODE=${PIPESTATUS[0]}
 
           PASSED=$(grep -c "^  run " test_output.txt | tr -d '[:space:]' || echo "0")
