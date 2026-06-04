@@ -146,6 +146,59 @@ coverage report -m
 
 CI: A GitHub Actions workflow (`.github/workflows/pytest.yml`) runs the pytest suite on push/PR and uploads the test artifacts (pytest log) as a build artifact named `test-artifacts`. You can download these artifacts from the workflow run and attach the logs to your Jira ticket as evidence.
 
+### Terratest (integration)
+
+There is an integration test in `tests/terratest` that provisions real AWS resources and validates runtime behavior by manually triggering SSM automation/association executions.
+
+To keep the **production module** unchanged (associations always created) while avoiding provisioning-time race conditions in restricted org environments, the test uses **two separate Terraform roots**:
+
+- `tests/terratest/fixtures-db`: creates disposable **RDS + Aurora** resources (tagged to opt-in)
+- `tests/terratest/fixtures-scheduler`: applies the **scheduler module** (SSM document + associations)
+
+This ensures the databases exist before any SSM scheduling is created.
+
+#### Prerequisites
+
+- **AWS credentials** able to create and destroy RDS, SSM, IAM (for pass/assume role), and basic EC2 networking resources.
+- **AWS region** set (via `AWS_REGION`/`AWS_DEFAULT_REGION`).
+- Terraform installed.
+- Go installed.
+
+The test expects an **Automation assume role** to exist and be assumable by SSM. By default this is the role passed into the module (see [IAM Role Requirements](#iam-role-requirements)).
+
+#### What it does (runtime contract)
+
+The test:
+
+1. Applies `fixtures-db` to create an RDS instance and an Aurora cluster, tagged to opt in (`Schedule=true`).
+2. Applies `fixtures-scheduler` to create the SSM Automation document + State Manager associations.
+3. Manually triggers:
+  - the Aurora Automation document twice (idempotency)
+  - a single SSM association run twice (idempotency)
+4. Destroys scheduler resources first, then DB resources.
+
+It also performs a best-effort pre-test cleanup of any leftover `test-rds-scheduler-*` resources.
+
+#### Running locally
+
+From `tests/terratest`:
+
+```bash
+go test -run TestRDSScheduler_RuntimeExecutions -count=1 -timeout 80m
+```
+
+If you want verbose logs:
+
+```bash
+go test -run TestRDSScheduler_RuntimeExecutions -count=1 -timeout 80m -v
+```
+
+#### Safety / cost notes
+
+- This test creates real RDS resources (including an Aurora writer instance). Expect it to take ~20–30 minutes.
+- Resource names are prefixed with `test-rds-scheduler-`.
+- Opt-in is tag based; only resources with the `Schedule` tag should ever be targeted by the module role conditions.
+
 
 
 ## IAM Role Requirements
