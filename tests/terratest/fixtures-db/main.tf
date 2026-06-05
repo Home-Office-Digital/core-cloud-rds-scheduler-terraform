@@ -95,6 +95,7 @@ resource "aws_security_group" "db" {
 
 resource "aws_db_instance" "rds" {
   # checkov:skip=CKV_AWS_129:Terratest fixture is disposable; deletion protection breaks automated teardown.
+  # checkov:skip=CKV_AWS_293:Terratest fixture is disposable; deletion protection is intentionally disabled to allow automated cleanup.
   # checkov:skip=CKV_AWS_157:Multi-AZ is intentionally disabled to keep Terratest fast and low-cost; scheduler logic doesn't depend on HA.
   # checkov:skip=CKV_AWS_353:Performance Insights is intentionally disabled to keep Terratest fast/cheap; scheduler logic doesn't depend on PI.
   # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
@@ -138,8 +139,11 @@ resource "aws_db_instance" "rds" {
 
 resource "aws_rds_cluster" "aurora" {
   # checkov:skip=CKV_AWS_162:Terratest fixture is disposable; deletion protection breaks automated teardown.
+  # checkov:skip=CKV_AWS_293:Terratest fixture is disposable; deletion protection is intentionally disabled to allow automated cleanup.
   # checkov:skip=CKV_AWS_287:AWS Backup plan resources require IAM role creation which is denied by org SCP; fixture uses native RDS backups only.
+  # checkov:skip=CKV2_AWS_9:AWS Backup integration isn't required for this disposable Terratest fixture and is blocked by org SCP constraints.
   # checkov:skip=CKV2_AWS_29:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
+  # checkov:skip=CKV2_AWS_2:Query logging isn't required to validate scheduler behaviour; fixture avoids custom parameter groups to prevent engine family mismatches.
   # checkov:skip=CKV_AWS_327:Fixture uses AWS-managed encryption to reduce complexity; CMK not required for disposable Terratest resources.
   # checkov:skip=CKV_AWS_16:Fixture-only DB; CloudWatch log exports aren't required to validate scheduler behavior.
   cluster_identifier                  = "${var.name_prefix}-aurora-${random_id.suffix.hex}"
