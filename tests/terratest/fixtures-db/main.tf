@@ -44,6 +44,9 @@ data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "kms" {
+  # checkov:skip=CKV_AWS_356:Terratest fixture-only KMS key policy; strict resource scoping creates dependency cycles and isn't representative of module behavior.
+  # checkov:skip=CKV_AWS_108:Terratest fixture-only KMS key policy; "Resource: *" is used to avoid Terraform cycles, key is ephemeral and scoped to test account.
+  # checkov:skip=CKV_AWS_109:Terratest fixture-only KMS key policy; broad KMS admin actions are limited to account root and used only for disposable test resources.
   statement {
     sid    = "EnableRootAccountAdministration"
     effect = "Allow"
@@ -198,6 +201,9 @@ resource "aws_security_group" "db" {
 # ----------------------------------------------------------------------------
 
 resource "aws_db_instance" "rds" {
+  # checkov:skip=CKV_AWS_129:Terratest fixture is disposable; deletion protection breaks automated teardown.
+  # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
+  # checkov:skip=CKV2_AWS_30:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
   identifier                      = "${var.name_prefix}-rds-${random_id.suffix.hex}"
   engine                          = "postgres"
   instance_class                  = "db.t3.micro"
@@ -236,6 +242,9 @@ resource "aws_db_instance" "rds" {
 }
 
 resource "aws_rds_cluster" "aurora" {
+  # checkov:skip=CKV_AWS_162:Terratest fixture is disposable; deletion protection breaks automated teardown.
+  # checkov:skip=CKV_AWS_287:AWS Backup plan resources require IAM role creation which is denied by org SCP; fixture uses native RDS backups only.
+  # checkov:skip=CKV2_AWS_29:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
   cluster_identifier                  = "${var.name_prefix}-aurora-${random_id.suffix.hex}"
   engine                              = "aurora-postgresql"
   master_username                     = "clusteradmin"
@@ -264,6 +273,7 @@ resource "aws_rds_cluster" "aurora" {
 }
 
 resource "aws_rds_cluster_instance" "aurora_writer" {
+  # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
   identifier                      = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
   cluster_identifier              = aws_rds_cluster.aurora.id
   instance_class                  = "db.t3.medium"
