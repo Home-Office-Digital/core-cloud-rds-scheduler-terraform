@@ -43,10 +43,26 @@ data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
+data "aws_iam_policy_document" "kms" {
+  statement {
+    sid     = "EnableIAMUserPermissions"
+    effect  = "Allow"
+    actions = ["kms:*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    resources = ["*"]
+  }
+}
+
 resource "aws_kms_key" "this" {
   description             = "KMS key for Terratest RDS/Aurora fixture encryption (storage/PI)."
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms.json
 }
 
 resource "aws_db_parameter_group" "postgres" {
@@ -62,6 +78,12 @@ resource "aws_db_parameter_group" "postgres" {
     name  = "log_min_duration_statement"
     value = "0"
   }
+
+  # Enforce TLS for client connections (Checkov: encryption in transit).
+  parameter {
+    name  = "rds.force_ssl"
+    value = "1"
+  }
 }
 
 resource "aws_rds_cluster_parameter_group" "aurora_postgres" {
@@ -76,6 +98,12 @@ resource "aws_rds_cluster_parameter_group" "aurora_postgres" {
   parameter {
     name  = "log_min_duration_statement"
     value = "0"
+  }
+
+  # Enforce TLS for client connections (Checkov: encryption in transit).
+  parameter {
+    name  = "rds.force_ssl"
+    value = "1"
   }
 }
 
