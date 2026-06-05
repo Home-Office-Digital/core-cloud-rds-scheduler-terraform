@@ -43,117 +43,10 @@ data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
-data "aws_iam_policy_document" "kms" {
-  # checkov:skip=CKV_AWS_356:Terratest fixture-only KMS key policy; strict resource scoping creates dependency cycles and isn't representative of module behavior.
-  # checkov:skip=CKV_AWS_108:Terratest fixture-only KMS key policy; "Resource: *" is used to avoid Terraform cycles, key is ephemeral and scoped to test account.
-  # checkov:skip=CKV_AWS_109:Terratest fixture-only KMS key policy; broad KMS admin actions are limited to account root and used only for disposable test resources.
-  statement {
-    sid    = "EnableRootAccountAdministration"
-    effect = "Allow"
-
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-
-    actions = [
-      "kms:Create*",
-      "kms:Describe*",
-      "kms:Enable*",
-      "kms:List*",
-      "kms:Put*",
-      "kms:Update*",
-      "kms:Revoke*",
-      "kms:Disable*",
-      "kms:Get*",
-      "kms:Delete*",
-      "kms:TagResource",
-      "kms:UntagResource",
-      "kms:ScheduleKeyDeletion",
-      "kms:CancelKeyDeletion",
-    ]
-
-    resources = ["*"]
-  }
-
-  statement {
-    sid    = "AllowRDSAndBackupUseOfTheKey"
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["rds.amazonaws.com", "backup.amazonaws.com"]
-    }
-
-    actions = [
-      "kms:Encrypt",
-      "kms:Decrypt",
-      "kms:ReEncrypt*",
-      "kms:GenerateDataKey*",
-      "kms:DescribeKey",
-      "kms:CreateGrant",
-      "kms:ListGrants",
-      "kms:RevokeGrant",
-    ]
-
-    resources = ["*"]
-
-    condition {
-      test     = "Bool"
-      variable = "kms:GrantIsForAWSResource"
-      values   = ["true"]
-    }
-  }
-}
-
-resource "aws_kms_key" "this" {
-  description             = "KMS key for Terratest RDS/Aurora fixture encryption (storage/PI)."
-  deletion_window_in_days = 7
-  enable_key_rotation     = true
-  policy                  = data.aws_iam_policy_document.kms.json
-}
-
-resource "aws_db_parameter_group" "postgres" {
-  name   = "${var.name_prefix}-pg-${random_id.suffix.hex}"
-  family = "postgres15"
-
-  parameter {
-    name  = "log_statement"
-    value = "all"
-  }
-
-  parameter {
-    name  = "log_min_duration_statement"
-    value = "0"
-  }
-
-  # Enforce TLS for client connections (Checkov: encryption in transit).
-  parameter {
-    name  = "rds.force_ssl"
-    value = "1"
-  }
-}
-
-resource "aws_rds_cluster_parameter_group" "aurora_postgres" {
-  name   = "${var.name_prefix}-aurora-pg-${random_id.suffix.hex}"
-  family = "aurora-postgresql15"
-
-  parameter {
-    name  = "log_statement"
-    value = "all"
-  }
-
-  parameter {
-    name  = "log_min_duration_statement"
-    value = "0"
-  }
-
-  # Enforce TLS for client connections (Checkov: encryption in transit).
-  parameter {
-    name  = "rds.force_ssl"
-    value = "1"
-  }
-}
+# Note: This fixture intentionally avoids creating a customer-managed KMS key and
+# custom parameter groups. Those add complexity and can significantly slow down
+# provision/destroy. For a disposable Terratest DB, AWS-managed encryption and
+# default parameter groups are sufficient.
 
 # ----------------------------------------------------------------------------
 # Networking (reuse existing VPC/subnets due to SCP constraints)
@@ -204,24 +97,23 @@ resource "aws_db_instance" "rds" {
   # checkov:skip=CKV_AWS_129:Terratest fixture is disposable; deletion protection breaks automated teardown.
   # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
   # checkov:skip=CKV2_AWS_30:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
-  identifier                      = "${var.name_prefix}-rds-${random_id.suffix.hex}"
-  engine                          = "postgres"
-  instance_class                  = "db.t3.micro"
-  allocated_storage               = 20
-  storage_type                    = "gp3"
-  publicly_accessible             = false
-  db_subnet_group_name            = aws_db_subnet_group.this.name
-  vpc_security_group_ids          = [aws_security_group.db.id]
-  skip_final_snapshot             = true
-  deletion_protection             = false
-  apply_immediately               = true
-  multi_az                        = true
-  backup_retention_period         = 1
-  auto_minor_version_upgrade      = true
-  copy_tags_to_snapshot           = true
-  storage_encrypted               = true
-  performance_insights_enabled    = true
-  performance_insights_kms_key_id = aws_kms_key.this.arn
+  identifier                   = "${var.name_prefix}-rds-${random_id.suffix.hex}"
+  engine                       = "postgres"
+  instance_class               = "db.t3.micro"
+  allocated_storage            = 20
+  storage_type                 = "gp3"
+  publicly_accessible          = false
+  db_subnet_group_name         = aws_db_subnet_group.this.name
+  vpc_security_group_ids       = [aws_security_group.db.id]
+  skip_final_snapshot          = true
+  deletion_protection          = false
+  apply_immediately            = true
+  multi_az                     = false
+  backup_retention_period      = 1
+  auto_minor_version_upgrade   = true
+  copy_tags_to_snapshot        = true
+  storage_encrypted            = true
+  performance_insights_enabled = false
   # Enhanced monitoring requires an IAM role (MonitoringRoleARN), which may be blocked by org SCPs.
   monitoring_interval = 0
   # Note: IAM auth isn't supported for all engines/versions; checkov expects it for RDS.
@@ -258,7 +150,6 @@ resource "aws_rds_cluster" "aurora" {
   preferred_maintenance_window        = "sun:05:00-sun:06:00"
   apply_immediately                   = true
   storage_encrypted                   = true
-  kms_key_id                          = aws_kms_key.this.arn
   copy_tags_to_snapshot               = true
   iam_database_authentication_enabled = true
   enabled_cloudwatch_logs_exports     = ["postgresql"]
@@ -274,15 +165,14 @@ resource "aws_rds_cluster" "aurora" {
 
 resource "aws_rds_cluster_instance" "aurora_writer" {
   # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
-  identifier                      = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
-  cluster_identifier              = aws_rds_cluster.aurora.id
-  instance_class                  = "db.t3.medium"
-  engine                          = aws_rds_cluster.aurora.engine
-  engine_version                  = aws_rds_cluster.aurora.engine_version
-  publicly_accessible             = false
-  auto_minor_version_upgrade      = true
-  performance_insights_enabled    = true
-  performance_insights_kms_key_id = aws_kms_key.this.arn
+  identifier                   = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
+  cluster_identifier           = aws_rds_cluster.aurora.id
+  instance_class               = "db.t3.medium"
+  engine                       = aws_rds_cluster.aurora.engine
+  engine_version               = aws_rds_cluster.aurora.engine_version
+  publicly_accessible          = false
+  auto_minor_version_upgrade   = true
+  performance_insights_enabled = false
   # Enhanced monitoring requires an IAM role (MonitoringRoleARN), which may be blocked by org SCPs.
   monitoring_interval = 0
 
