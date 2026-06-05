@@ -95,8 +95,11 @@ resource "aws_security_group" "db" {
 
 resource "aws_db_instance" "rds" {
   # checkov:skip=CKV_AWS_129:Terratest fixture is disposable; deletion protection breaks automated teardown.
+  # checkov:skip=CKV_AWS_157:Multi-AZ is intentionally disabled to keep Terratest fast and low-cost; scheduler logic doesn't depend on HA.
+  # checkov:skip=CKV_AWS_353:Performance Insights is intentionally disabled to keep Terratest fast/cheap; scheduler logic doesn't depend on PI.
   # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
   # checkov:skip=CKV2_AWS_30:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
+  # checkov:skip=CKV_AWS_16:Fixture-only DB; CloudWatch log exports aren't required to validate scheduler behavior.
   identifier                   = "${var.name_prefix}-rds-${random_id.suffix.hex}"
   engine                       = "postgres"
   instance_class               = "db.t3.micro"
@@ -137,6 +140,8 @@ resource "aws_rds_cluster" "aurora" {
   # checkov:skip=CKV_AWS_162:Terratest fixture is disposable; deletion protection breaks automated teardown.
   # checkov:skip=CKV_AWS_287:AWS Backup plan resources require IAM role creation which is denied by org SCP; fixture uses native RDS backups only.
   # checkov:skip=CKV2_AWS_29:Query logging via a custom parameter group causes engine family mismatches across org accounts; fixture relies on defaults.
+  # checkov:skip=CKV_AWS_327:Fixture uses AWS-managed encryption to reduce complexity; CMK not required for disposable Terratest resources.
+  # checkov:skip=CKV_AWS_16:Fixture-only DB; CloudWatch log exports aren't required to validate scheduler behavior.
   cluster_identifier                  = "${var.name_prefix}-aurora-${random_id.suffix.hex}"
   engine                              = "aurora-postgresql"
   master_username                     = "clusteradmin"
@@ -165,6 +170,7 @@ resource "aws_rds_cluster" "aurora" {
 
 resource "aws_rds_cluster_instance" "aurora_writer" {
   # checkov:skip=CKV_AWS_118:Enhanced monitoring requires a monitoring IAM role which can't be created in this org account (SCP); monitoring is intentionally disabled for fixture.
+  # checkov:skip=CKV_AWS_353:Performance Insights is intentionally disabled to keep Terratest fast/cheap; scheduler logic doesn't depend on PI.
   identifier                   = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
   cluster_identifier           = aws_rds_cluster.aurora.id
   instance_class               = "db.t3.medium"
