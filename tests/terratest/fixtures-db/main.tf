@@ -70,8 +70,7 @@ data "aws_iam_policy_document" "kms" {
       "kms:CancelKeyDeletion",
     ]
 
-    # This policy document is attached directly to the KMS key resource.
-    resources = [aws_kms_key.this.arn]
+    resources = ["*"]
   }
 
   statement {
@@ -94,7 +93,7 @@ data "aws_iam_policy_document" "kms" {
       "kms:RevokeGrant",
     ]
 
-    resources = [aws_kms_key.this.arn]
+    resources = ["*"]
 
     condition {
       test     = "Bool"
@@ -208,7 +207,7 @@ resource "aws_db_instance" "rds" {
   db_subnet_group_name            = aws_db_subnet_group.this.name
   vpc_security_group_ids          = [aws_security_group.db.id]
   skip_final_snapshot             = true
-  deletion_protection             = true
+  deletion_protection             = false
   apply_immediately               = true
   multi_az                        = true
   backup_retention_period         = 1
@@ -217,11 +216,14 @@ resource "aws_db_instance" "rds" {
   storage_encrypted               = true
   performance_insights_enabled    = true
   performance_insights_kms_key_id = aws_kms_key.this.arn
-  monitoring_interval             = 60
+  # Enhanced monitoring requires an IAM role (MonitoringRoleARN), which may be blocked by org SCPs.
+  monitoring_interval = 0
   # Note: IAM auth isn't supported for all engines/versions; checkov expects it for RDS.
   iam_database_authentication_enabled = true
   enabled_cloudwatch_logs_exports     = ["postgresql", "upgrade"]
-  parameter_group_name                = aws_db_parameter_group.postgres.name
+  # Avoid DBParameterGroupFamily mismatches across org accounts/engine versions.
+  # (Default parameter group is fine for this disposable fixture.)
+  # parameter_group_name                = aws_db_parameter_group.postgres.name
 
   # Minimal credentials for a disposable test instance.
   username = "testuser"
@@ -241,7 +243,7 @@ resource "aws_rds_cluster" "aurora" {
   db_subnet_group_name                = aws_db_subnet_group.this.name
   vpc_security_group_ids              = [aws_security_group.db.id]
   skip_final_snapshot                 = true
-  deletion_protection                 = true
+  deletion_protection                 = false
   backup_retention_period             = 1
   preferred_backup_window             = "03:00-04:00"
   preferred_maintenance_window        = "sun:05:00-sun:06:00"
@@ -251,7 +253,9 @@ resource "aws_rds_cluster" "aurora" {
   copy_tags_to_snapshot               = true
   iam_database_authentication_enabled = true
   enabled_cloudwatch_logs_exports     = ["postgresql"]
-  db_cluster_parameter_group_name     = aws_rds_cluster_parameter_group.aurora_postgres.name
+  # Avoid DBParameterGroupFamily mismatches across org accounts/engine versions.
+  # (Default parameter group is fine for this disposable fixture.)
+  # db_cluster_parameter_group_name     = aws_rds_cluster_parameter_group.aurora_postgres.name
 
   tags = merge(local.tags, {
     Name    = "${var.name_prefix}-aurora-${random_id.suffix.hex}"
@@ -269,7 +273,8 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
   auto_minor_version_upgrade      = true
   performance_insights_enabled    = true
   performance_insights_kms_key_id = aws_kms_key.this.arn
-  monitoring_interval             = 60
+  # Enhanced monitoring requires an IAM role (MonitoringRoleARN), which may be blocked by org SCPs.
+  monitoring_interval = 0
 
   tags = merge(local.tags, {
     Name    = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
@@ -277,85 +282,6 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
   })
 }
 
-resource "aws_backup_vault" "this" {
-  name        = "${var.name_prefix}-vault-${random_id.suffix.hex}"
-  kms_key_arn = aws_kms_key.this.arn
-}
-
-resource "aws_backup_plan" "this" {
-  name = "${var.name_prefix}-plan-${random_id.suffix.hex}"
-
-  rule {
-    rule_name         = "daily"
-    target_vault_name = aws_backup_vault.this.name
-    schedule          = "cron(0 5 * * ? *)"
-
-    lifecycle {
-      # Keep minimal retention for a disposable integration-test fixture.
-      delete_after = 1
-    }
-  }
-}
-
-data "aws_iam_policy_document" "backup_assume" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["backup.amazonaws.com"]
-    }
-
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-resource "aws_iam_role" "backup" {
-  name_prefix        = "${var.name_prefix}-backup-"
-  assume_role_policy = data.aws_iam_policy_document.backup_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "backup" {
-  role       = aws_iam_role.backup.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
-}
-
-resource "aws_backup_selection" "aurora" {
-  name         = "aurora"
-  plan_id      = aws_backup_plan.this.id
-  iam_role_arn = aws_iam_role.backup.arn
-
-  resources = [
-    aws_rds_cluster.aurora.arn,
-  ]
-
-  # Terraform doesn't purge AWS Backup recovery points on destroy; make teardown clean.
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<-EOT
-      set -euo pipefail
-      if ! command -v aws >/dev/null 2>&1; then
-        echo "aws CLI not available; skipping recovery point purge" >&2
-        exit 0
-      fi
-
-      VAULT_NAME="${aws_backup_vault.this.name}"
-      # Delete recovery points created by this fixture's backup plan.
-      RECOVERY_POINTS=$(aws backup list-recovery-points-by-backup-vault \
-        --backup-vault-name "$VAULT_NAME" \
-        --query "RecoveryPoints[?CreatedBy.BackupPlanId=='${aws_backup_plan.this.id}'].RecoveryPointArn" \
-        --output text || true)
-
-      if [ -z "$RECOVERY_POINTS" ] || [ "$RECOVERY_POINTS" = "None" ]; then
-        exit 0
-      fi
-
-      for ARN in $RECOVERY_POINTS; do
-        aws backup delete-recovery-point --backup-vault-name "$VAULT_NAME" --recovery-point-arn "$ARN" || true
-      done
-    EOT
-  }
-}
 
 output "name_prefix" {
   value = var.name_prefix

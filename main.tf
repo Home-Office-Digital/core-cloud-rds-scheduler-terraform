@@ -31,7 +31,6 @@ resource "aws_ssm_association" "start_rds_instances" {
   schedule_expression = "cron(${var.start_rds_minute} ${var.start_rds_hour} ? * ${each.key} *)"
 
   parameters = {
-    InstanceId           = ""
     AutomationAssumeRole = var.automation_role_arn
   }
 
@@ -51,7 +50,6 @@ resource "aws_ssm_association" "stop_rds_instances" {
   schedule_expression = "cron(${var.stop_rds_minute} ${var.stop_rds_hour} ? * ${each.key} *)"
 
   parameters = {
-    InstanceId           = ""
     AutomationAssumeRole = var.automation_role_arn
   }
 
