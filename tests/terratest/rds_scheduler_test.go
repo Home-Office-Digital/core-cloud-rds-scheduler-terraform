@@ -105,20 +105,97 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 		exec := waitForAutomationExecution(t, ctx, ssmClient, execID, 3*time.Minute)
 		require.Equal(t, ssmTypes.AutomationExecutionStatusSuccess, exec.AutomationExecution.AutomationExecutionStatus)
 		require.Equal(t, documentName, awsv2.ToString(exec.AutomationExecution.DocumentName))
+		requireAutomationAssumeRole(t, exec, automationRoleArn)
 		require.NotEmpty(t, exec.AutomationExecution.StepExecutions)
+		requireAutomationOutputsShape(t, exec)
 
 		execID2 := triggerAutomationExecutionWithRetry(t, ctx, ssmClient, documentName, "Stop", "Schedule", automationRoleArn)
 		exec2 := waitForAutomationExecution(t, ctx, ssmClient, execID2, 3*time.Minute)
 		require.Equal(t, ssmTypes.AutomationExecutionStatusSuccess, exec2.AutomationExecution.AutomationExecutionStatus)
+		requireAutomationAssumeRole(t, exec2, automationRoleArn)
+	})
+
+	t.Run("aurora_no_eligible_tags_succeeds", func(t *testing.T) {
+		execID := triggerAutomationExecutionWithRetry(t, ctx, ssmClient, documentName, "Stop", "Schedule_DOES_NOT_EXIST", automationRoleArn)
+		exec := waitForAutomationExecution(t, ctx, ssmClient, execID, 3*time.Minute)
+		require.Equal(t, ssmTypes.AutomationExecutionStatusSuccess, exec.AutomationExecution.AutomationExecutionStatus)
+		require.Equal(t, documentName, awsv2.ToString(exec.AutomationExecution.DocumentName))
+		requireAutomationAssumeRole(t, exec, automationRoleArn)
+		requireAutomationOutputsShape(t, exec)
+
+		processed, _ := getAutomationOutputsStringList(exec, "ProcessedClusters")
+		require.Empty(t, processed)
 	})
 
 	t.Run("rds_association_execution_idempotent", func(t *testing.T) {
-		assocID := findAnyAssociationByPrefix(t, ctx, ssmClient, namePrefix)
+		assocID, assocDocName := findAnyRDSAssociationByPrefix(t, ctx, ssmClient, namePrefix)
 		require.NotEmpty(t, assocID)
+		require.NotEmpty(t, assocDocName)
+		require.True(t, assocDocName == "AWS-StartRdsInstance" || assocDocName == "AWS-StopRdsInstance", "unexpected association document: %q", assocDocName)
 
 		require.NoError(t, runAssociationOnceWithRetry(ctx, ssmClient, assocID, 3, 10*time.Minute))
 		require.NoError(t, runAssociationOnceWithRetry(ctx, ssmClient, assocID, 3, 10*time.Minute))
 	})
+}
+
+func requireAutomationOutputsShape(t *testing.T, exec *ssm.GetAutomationExecutionOutput) {
+	t.Helper()
+
+	// The top-level AutomationExecution.Outputs isn't guaranteed to be populated in all
+	// GetAutomationExecution responses. Step-level outputs are more reliable for our
+	// single-step runbook.
+	keys := []string{"ProcessedClusters", "SkippedClusters", "FailedClusters"}
+	for _, k := range keys {
+		require.True(t, automationExecutionHasOutputKey(exec, k), "automation outputs missing %s", k)
+	}
+}
+
+func requireAutomationAssumeRole(t *testing.T, exec *ssm.GetAutomationExecutionOutput, expectedRoleArn string) {
+	t.Helper()
+	actual, ok := getAutomationParamFirst(exec, "AutomationAssumeRole")
+	require.True(t, ok, "automation parameters missing AutomationAssumeRole")
+	require.Equal(t, expectedRoleArn, actual)
+}
+
+func getAutomationParamFirst(exec *ssm.GetAutomationExecutionOutput, key string) (string, bool) {
+	if exec == nil || exec.AutomationExecution == nil || exec.AutomationExecution.Parameters == nil {
+		return "", false
+	}
+	v, ok := exec.AutomationExecution.Parameters[key]
+	if !ok || len(v) == 0 {
+		return "", false
+	}
+	return v[0], true
+}
+
+func getAutomationOutputsStringList(exec *ssm.GetAutomationExecutionOutput, key string) ([]string, bool) {
+	if exec == nil || exec.AutomationExecution == nil {
+		return nil, false
+	}
+
+	// Prefer top-level outputs if present.
+	if exec.AutomationExecution.Outputs != nil {
+		if v, ok := exec.AutomationExecution.Outputs[key]; ok {
+			return v, true
+		}
+	}
+
+	// Fall back to step-level outputs.
+	for _, step := range exec.AutomationExecution.StepExecutions {
+		if step.Outputs == nil {
+			continue
+		}
+		if v, ok := step.Outputs[key]; ok {
+			return v, true
+		}
+	}
+
+	return nil, false
+}
+
+func automationExecutionHasOutputKey(exec *ssm.GetAutomationExecutionOutput, key string) bool {
+	_, ok := getAutomationOutputsStringList(exec, key)
+	return ok
 }
 
 // runAssociationOnceWithRetry triggers an SSM association once and waits for completion,
@@ -208,6 +285,11 @@ func destroyTwoPhaseWithRetry(t *testing.T, tfOptsDB, tfOptsScheduler *terraform
 	// If apply never succeeded, we may not have created the scheduler stack.
 	// Still attempt best-effort cleanup for both roots.
 	if tfOptsScheduler != nil && tfOptsScheduler.TerraformDir != "" {
+		if !terraformWasInitialized(tfOptsScheduler.TerraformDir) {
+			// If credentials are missing/expired, we can fail before init runs.
+			// Don't attempt destroy in that case; it adds noisy errors like "Module not installed".
+			return
+		}
 		// Ensure Aurora is deletable before destroying DB root (there can be concurrent stop/start churn).
 		// Destroying scheduler first reduces the chance that new stop executions will race the DB deletion.
 		destroyWithRetry(t, tfOptsScheduler, region, applySucceeded)
@@ -216,6 +298,20 @@ func destroyTwoPhaseWithRetry(t *testing.T, tfOptsDB, tfOptsScheduler *terraform
 	if tfOptsDB != nil && tfOptsDB.TerraformDir != "" {
 		destroyWithRetry(t, tfOptsDB, region, applySucceeded)
 	}
+}
+
+func terraformWasInitialized(terraformDir string) bool {
+	// Terraform init creates .terraform/ and .terraform.lock.hcl.
+	if terraformDir == "" {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(terraformDir, ".terraform")); err == nil {
+		return true
+	}
+	if _, err := os.Stat(filepath.Join(terraformDir, ".terraform.lock.hcl")); err == nil {
+		return true
+	}
+	return false
 }
 
 // rewriteFixtureModuleSourceToRepoRoot rewrites `source = "../../.."` in a temp-copied fixture
@@ -583,13 +679,10 @@ func waitForAutomationExecution(t *testing.T, ctx context.Context, client *ssm.C
 	}
 }
 
-// findAnyAssociationByPrefix finds any SSM association whose AssociationName starts with namePrefix
-// and returns its AssociationId.
-//
-// This keeps the test generic (it doesn't need to know exact weekday/action association names).
-func findAnyAssociationByPrefix(t *testing.T, ctx context.Context, client *ssm.Client, namePrefix string) string {
+func findAnyRDSAssociationByPrefix(t *testing.T, ctx context.Context, client *ssm.Client, namePrefix string) (associationID, documentName string) {
 	t.Helper()
 
+	// Only return AWS-managed RDS associations. Ignore Aurora automation associations entirely.
 	var nextToken *string
 	for {
 		out, err := client.ListAssociations(ctx, &ssm.ListAssociationsInput{
@@ -599,8 +692,12 @@ func findAnyAssociationByPrefix(t *testing.T, ctx context.Context, client *ssm.C
 		require.NoError(t, err)
 
 		for _, a := range out.Associations {
-			if strings.HasPrefix(awsv2.ToString(a.AssociationName), namePrefix) {
-				return awsv2.ToString(a.AssociationId)
+			if !strings.HasPrefix(awsv2.ToString(a.AssociationName), namePrefix) {
+				continue
+			}
+			name := awsv2.ToString(a.Name)
+			if name == "AWS-StartRdsInstance" || name == "AWS-StopRdsInstance" {
+				return awsv2.ToString(a.AssociationId), name
 			}
 		}
 
@@ -610,8 +707,8 @@ func findAnyAssociationByPrefix(t *testing.T, ctx context.Context, client *ssm.C
 		nextToken = out.NextToken
 	}
 
-	t.Fatalf("no association found with prefix %q", namePrefix)
-	return ""
+	t.Fatalf("no RDS association found with prefix %q (AWS-StartRdsInstance/AWS-StopRdsInstance)", namePrefix)
+	return "", ""
 }
 
 // triggerAssociationExecution causes an association to run immediately via StartAssociationsOnce
@@ -673,15 +770,52 @@ func waitForAssociationExecutionE(ctx context.Context, client *ssm.Client, assoc
 			case "Success":
 				return nil
 			case "Failed", "TimedOut", "Cancelled":
-				detail := awsv2.ToString(exec.DetailedStatus)
-				if detail == "" {
-					detail = awsv2.ToString(exec.Status)
-				}
-				return fmt.Errorf("association execution %s/%s ended with status %s (%s)", associationID, executionID, s, detail)
+				return associationExecutionTerminalError(ctx, client, associationID, executionID, s, awsv2.ToString(exec.DetailedStatus))
 			default:
 			}
 		}
 
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func associationExecutionTerminalError(ctx context.Context, client *ssm.Client, associationID, executionID, status, detailedStatus string) error {
+	if detailedStatus == "" {
+		detailedStatus = status
+	}
+
+	// Best-effort: fetch execution *target* details (often contains more context).
+	// Note: this is frequently empty for tag-targeted associations when there are no managed instances.
+	out, err := client.DescribeAssociationExecutionTargets(ctx, &ssm.DescribeAssociationExecutionTargetsInput{
+		AssociationId: awsv2.String(associationID),
+		ExecutionId:   awsv2.String(executionID),
+		MaxResults:    awsv2.Int32(10),
+	})
+	if err != nil || out == nil || len(out.AssociationExecutionTargets) == 0 {
+		return fmt.Errorf("association execution %s/%s ended with status %s (%s)", associationID, executionID, status, detailedStatus)
+	}
+
+	// Include up to a couple of target status lines to make failures actionable.
+	lines := make([]string, 0, 2)
+	for i, tgt := range out.AssociationExecutionTargets {
+		if i >= 2 {
+			break
+		}
+		lines = append(lines, fmt.Sprintf(
+			"target %s/%s status=%s detailed=%s",
+			awsv2.ToString(tgt.ResourceType),
+			awsv2.ToString(tgt.ResourceId),
+			awsv2.ToString(tgt.Status),
+			awsv2.ToString(tgt.DetailedStatus),
+		))
+	}
+
+	return fmt.Errorf(
+		"association execution %s/%s ended with status %s (%s): %s",
+		associationID,
+		executionID,
+		status,
+		detailedStatus,
+		strings.Join(lines, "; "),
+	)
 }
