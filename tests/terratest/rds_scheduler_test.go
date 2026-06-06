@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 	region := pickAwsRegion(t)
 	suffix := strings.ToLower(random.UniqueId())
 	namePrefix := fmt.Sprintf("test-rds-scheduler-%s", suffix)
+	scheduleTagKey := fmt.Sprintf("Schedule-%s", suffix)
 
 	automationRoleArn := os.Getenv("TF_VAR_automation_role_arn")
 	if automationRoleArn == "" {
@@ -47,7 +49,7 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 		TerraformDir: "./fixtures-db",
 		Vars: map[string]any{
 			"name_prefix":      namePrefix,
-			"schedule_tag_key": "Schedule",
+			"schedule_tag_key": scheduleTagKey,
 		},
 		EnvVars: map[string]string{
 			"AWS_REGION": region,
@@ -67,7 +69,7 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 		Vars: map[string]any{
 			"name_prefix":         namePrefix,
 			"automation_role_arn": automationRoleArn,
-			"schedule_tag_key":    "Schedule",
+			"schedule_tag_key":    scheduleTagKey,
 		},
 		EnvVars: map[string]string{
 			"AWS_REGION": region,
@@ -671,6 +673,17 @@ func waitForAutomationExecution(t *testing.T, ctx context.Context, client *ssm.C
 		case ssmTypes.AutomationExecutionStatusFailed,
 			ssmTypes.AutomationExecutionStatusCancelled,
 			ssmTypes.AutomationExecutionStatusTimedout:
+			// Enhanced: log step-level details for easier debugging
+			if steps := out.AutomationExecution.StepExecutions; len(steps) > 0 {
+				t.Logf("Automation execution %s failed. Step details:", execID)
+				for _, step := range steps {
+					t.Logf("  Step: %s | Status: %s | FailureDetails: %v | Outputs: %v", awsv2.ToString(step.StepName), step.StepStatus, step.FailureDetails, step.Outputs)
+				}
+			}
+
+			// Also dump the full GetAutomationExecution output to ensure any nested FailureDetails
+			// or other fields are captured in the test log output for post-mortem.
+			dumpAutomationExecutionJSON(t, execID, out)
 			t.Fatalf("automation execution %s ended with status %s", execID, out.AutomationExecution.AutomationExecutionStatus)
 		default:
 		}
@@ -711,6 +724,21 @@ func findAnyRDSAssociationByPrefix(t *testing.T, ctx context.Context, client *ss
 	return "", ""
 }
 
+// dumpAutomationExecutionJSON marshals the GetAutomationExecution output and logs it.
+func dumpAutomationExecutionJSON(t *testing.T, execID string, out *ssm.GetAutomationExecutionOutput) {
+	t.Helper()
+	if out == nil {
+		t.Logf("no GetAutomationExecution output to dump for %s", execID)
+		return
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		t.Logf("failed to marshal GetAutomationExecution output for %s: %v", execID, err)
+		return
+	}
+	t.Logf("Full GetAutomationExecution JSON for %s:\n%s", execID, string(b))
+}
+
 // triggerAssociationExecution causes an association to run immediately via StartAssociationsOnce
 // and then returns the most recent execution ID found for it.
 func triggerAssociationExecution(ctx context.Context, client *ssm.Client, associationID string) (string, error) {
@@ -749,6 +777,10 @@ func waitForAssociationExecutionE(ctx context.Context, client *ssm.Client, assoc
 	deadline := time.Now().Add(timeout)
 	for {
 		if time.Now().After(deadline) {
+			diag := associationExecutionDiagnostics(ctx, client, associationID, executionID)
+			if diag != "" {
+				return fmt.Errorf("timed out waiting for association execution %s/%s. diagnostics: %s", associationID, executionID, diag)
+			}
 			return fmt.Errorf("timed out waiting for association execution %s/%s", associationID, executionID)
 		}
 
@@ -779,6 +811,56 @@ func waitForAssociationExecutionE(ctx context.Context, client *ssm.Client, assoc
 	}
 }
 
+func associationExecutionDiagnostics(ctx context.Context, client *ssm.Client, associationID, executionID string) string {
+	// Best-effort: pull the execution record plus a larger slice of targets.
+	out, err := client.DescribeAssociationExecutions(ctx, &ssm.DescribeAssociationExecutionsInput{
+		AssociationId: awsv2.String(associationID),
+		MaxResults:    awsv2.Int32(50),
+	})
+	if err != nil {
+		return fmt.Sprintf("DescribeAssociationExecutions error: %v", err)
+	}
+
+	status := "(not found in DescribeAssociationExecutions results)"
+	detailed := ""
+	for _, exec := range out.AssociationExecutions {
+		if awsv2.ToString(exec.ExecutionId) != executionID {
+			continue
+		}
+		status = awsv2.ToString(exec.Status)
+		detailed = awsv2.ToString(exec.DetailedStatus)
+		break
+	}
+
+	tgtOut, tgtErr := client.DescribeAssociationExecutionTargets(ctx, &ssm.DescribeAssociationExecutionTargetsInput{
+		AssociationId: awsv2.String(associationID),
+		ExecutionId:   awsv2.String(executionID),
+		MaxResults:    awsv2.Int32(50),
+	})
+	if tgtErr != nil {
+		return fmt.Sprintf("status=%s detailed=%s; DescribeAssociationExecutionTargets error: %v", status, detailed, tgtErr)
+	}
+	if tgtOut == nil || len(tgtOut.AssociationExecutionTargets) == 0 {
+		return fmt.Sprintf("status=%s detailed=%s; targets=0", status, detailed)
+	}
+
+	lines := make([]string, 0, 5)
+	for i, tgt := range tgtOut.AssociationExecutionTargets {
+		if i >= 5 {
+			break
+		}
+		lines = append(lines, fmt.Sprintf(
+			"target %s/%s status=%s detailed=%s",
+			awsv2.ToString(tgt.ResourceType),
+			awsv2.ToString(tgt.ResourceId),
+			awsv2.ToString(tgt.Status),
+			awsv2.ToString(tgt.DetailedStatus),
+		))
+	}
+
+	return fmt.Sprintf("status=%s detailed=%s; %s", status, detailed, strings.Join(lines, "; "))
+}
+
 func associationExecutionTerminalError(ctx context.Context, client *ssm.Client, associationID, executionID, status, detailedStatus string) error {
 	if detailedStatus == "" {
 		detailedStatus = status
@@ -795,10 +877,10 @@ func associationExecutionTerminalError(ctx context.Context, client *ssm.Client, 
 		return fmt.Errorf("association execution %s/%s ended with status %s (%s)", associationID, executionID, status, detailedStatus)
 	}
 
-	// Include up to a couple of target status lines to make failures actionable.
-	lines := make([]string, 0, 2)
+	// Include multiple target status lines to make failures actionable.
+	lines := make([]string, 0, 10)
 	for i, tgt := range out.AssociationExecutionTargets {
-		if i >= 2 {
+		if i >= 10 {
 			break
 		}
 		lines = append(lines, fmt.Sprintf(
