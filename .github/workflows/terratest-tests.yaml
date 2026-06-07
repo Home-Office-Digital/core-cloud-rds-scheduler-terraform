@@ -43,6 +43,7 @@ jobs:
 
       - name: Get Go modules
         run: go mod download
+        working-directory: tests/terratest
 
       - name: Run Terratest
         id: terratest-test
