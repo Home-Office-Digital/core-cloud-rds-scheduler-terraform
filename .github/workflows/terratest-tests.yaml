@@ -41,6 +41,10 @@ jobs:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
 
+      - name: Get Go modules
+        run: go mod download
+        working-directory: tests/terratest
+
       - name: Run Terratest
         id: terratest-test
         env:
