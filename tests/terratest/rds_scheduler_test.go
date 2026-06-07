@@ -34,13 +34,11 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 	namePrefix := fmt.Sprintf("test-rds-scheduler-%s", suffix)
 	scheduleTagKey := fmt.Sprintf("Schedule-%s", suffix)
 
-	automationRoleArn := os.Getenv("TF_VAR_automation_role_arn")
+	// Resolve automation role ARN. Use CI-provided ROLE_TO_ASSUME (set in the workflow).
+	// Fall back to the repository default so local runs still work.
+	automationRoleArn := os.Getenv("ROLE_TO_ASSUME")
 	if automationRoleArn == "" {
-		automationRoleArn = os.Getenv("AUTOMATION_ROLE_ARN")
-	}
-	if automationRoleArn == "" {
-		// Default to the same role used by the repo's terraform apply tests workflow.
-		// Users can override via env when running in different accounts.
+		// Default used in other workflows; keep as last-resort fallback for local runs.
 		automationRoleArn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation"
 	}
 	require.NotEmpty(t, automationRoleArn)
