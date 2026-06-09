@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	mr "math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,6 +30,9 @@ import (
 // runtime behavior and idempotency.
 func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 	t.Parallel()
+
+	// Seed the math/rand source used by jitter/backoff helper.
+	mr.Seed(time.Now().UnixNano())
 
 	region := pickAwsRegion(t)
 	suffix := strings.ToLower(random.UniqueId())
@@ -213,8 +218,7 @@ func runAssociationOnceWithRetry(ctx context.Context, client *ssm.Client, associ
 			// SSM commonly throttles in constrained accounts.
 			errStr := err.Error()
 			if strings.Contains(errStr, "ThrottlingException") || strings.Contains(strings.ToLower(errStr), "rate exceeded") {
-				sleep := time.Duration(attempt*attempt) * time.Second
-				time.Sleep(sleep)
+				sleepWithJitter(attempt, 2*time.Second, 30*time.Second)
 				continue
 			}
 		} else {
@@ -227,8 +231,7 @@ func runAssociationOnceWithRetry(ctx context.Context, client *ssm.Client, associ
 			}
 		}
 
-		sleep := time.Duration(attempt*attempt) * time.Second
-		time.Sleep(sleep)
+		sleepWithJitter(attempt, 1*time.Second, 30*time.Second)
 	}
 
 	return lastErr
@@ -248,20 +251,21 @@ func runAssociationOnceWithRetry(ctx context.Context, client *ssm.Client, associ
 // - returns the AutomationExecutionId (fails the test if it can't be started).
 func triggerAutomationExecutionWithRetry(t *testing.T, ctx context.Context, ssmClient *ssm.Client, documentName, action, scheduleTagKey, automationRoleArn string) string {
 	t.Helper()
-
-	const maxAttempts = 8
+	const maxAttempts = 12
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		execID, err := triggerAutomationExecution(ctx, ssmClient, documentName, action, scheduleTagKey, automationRoleArn)
 		if err == nil {
 			return execID
 		}
-		// SSM APIs are prone to short bursts of throttling in constrained accounts.
-		if strings.Contains(err.Error(), "ThrottlingException") || strings.Contains(strings.ToLower(err.Error()), "rate exceeded") {
-			sleep := time.Duration(attempt*attempt) * time.Second
-			t.Logf("StartAutomationExecution throttled (attempt %d/%d), sleeping %s: %v", attempt, maxAttempts, sleep, err)
-			time.Sleep(sleep)
+
+		errStr := err.Error()
+		if strings.Contains(errStr, "ThrottlingException") || strings.Contains(strings.ToLower(errStr), "rate exceeded") {
+			// On throttling, back off a bit more aggressively with jitter.
+			t.Logf("StartAutomationExecution throttled (attempt %d/%d), backing off with jitter: %v", attempt, maxAttempts, err)
+			sleepWithJitter(attempt, 2*time.Second, 60*time.Second)
 			continue
 		}
+
 		require.NoError(t, err)
 	}
 
@@ -737,6 +741,26 @@ func dumpAutomationExecutionJSON(t *testing.T, execID string, out *ssm.GetAutoma
 	t.Logf("Full GetAutomationExecution JSON for %s:\n%s", execID, string(b))
 }
 
+// sleepWithJitter sleeps using exponential backoff with full jitter.
+// attempt is 1-based. min and max bound the sleep duration.
+func sleepWithJitter(attempt int, min, max time.Duration) {
+	// Exponential base (2^attempt), scaled and jittered.
+	// Use float64 for safe math, but clamp to max.
+	exp := math.Pow(2, float64(attempt-1))
+	// base sleep is min * exp, but clamp to max.
+	base := time.Duration(float64(min) * exp)
+	if base > max {
+		base = max
+	}
+	// Add jitter: random between 0 and base
+	jitter := time.Duration(mr.Int63n(int64(base) + 1))
+	sleep := base + jitter
+	if sleep > max {
+		sleep = max
+	}
+	time.Sleep(sleep)
+}
+
 // triggerAssociationExecution causes an association to run immediately via StartAssociationsOnce
 // and then returns the most recent execution ID found for it.
 func triggerAssociationExecution(ctx context.Context, client *ssm.Client, associationID string) (string, error) {
@@ -782,15 +806,12 @@ func waitForAssociationExecutionE(ctx context.Context, client *ssm.Client, assoc
 			return fmt.Errorf("timed out waiting for association execution %s/%s", associationID, executionID)
 		}
 
-		out, err := client.DescribeAssociationExecutions(ctx, &ssm.DescribeAssociationExecutionsInput{
-			AssociationId: awsv2.String(associationID),
-			MaxResults:    awsv2.Int32(50),
-		})
+		executions, err := listAssociationExecutions(ctx, client, associationID)
 		if err != nil {
 			return err
 		}
 
-		for _, exec := range out.AssociationExecutions {
+		for _, exec := range executions {
 			if awsv2.ToString(exec.ExecutionId) != executionID {
 				continue
 			}
@@ -805,8 +826,19 @@ func waitForAssociationExecutionE(ctx context.Context, client *ssm.Client, assoc
 			}
 		}
 
-		time.Sleep(5 * time.Second)
+		sleepWithJitter(1, 5*time.Second, 30*time.Second)
 	}
+}
+
+func listAssociationExecutions(ctx context.Context, client *ssm.Client, associationID string) ([]ssmTypes.AssociationExecution, error) {
+	out, err := client.DescribeAssociationExecutions(ctx, &ssm.DescribeAssociationExecutionsInput{
+		AssociationId: awsv2.String(associationID),
+		MaxResults:    awsv2.Int32(50),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.AssociationExecutions, nil
 }
 
 func associationExecutionDiagnostics(ctx context.Context, client *ssm.Client, associationID, executionID string) string {

@@ -59,6 +59,19 @@ jobs:
           echo "ROLE_TO_ASSUME=$PRIV_ROLE" >> $GITHUB_ENV
           aws sts get-caller-identity
 
+      - name: CI diagnostics
+        run: |
+          set -euo pipefail
+          echo "=== caller identity ==="
+          aws sts get-caller-identity || true
+          echo "=== exported automation role (TF_VAR_automation_role_arn) ==="
+          echo "$TF_VAR_automation_role_arn"
+          ROLE_NAME="${TF_VAR_automation_role_arn##*/}"
+          echo "=== assume role policy for $ROLE_NAME ==="
+          aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json || true
+          echo "=== recent failed SSM automation executions ==="
+          aws ssm describe-automation-executions --filters Key=ExecutionStatus,Values=Failed --max-results 10 || true
+
       - name: Get Go modules
         run: go mod download
         working-directory: tests/terratest
