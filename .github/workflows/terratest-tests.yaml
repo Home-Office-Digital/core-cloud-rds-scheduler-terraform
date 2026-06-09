@@ -19,7 +19,6 @@ jobs:
     env:
       AWS_REGION: eu-west-2
       ROLE_TO_ASSUME: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
-      PRIVILEGED_ROLE_ARN: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-assumable
 
     steps:
       - name: Checkout
@@ -28,21 +27,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24"
-
-      - name: Verify Go installation
-        run: |
-          echo "--- go version ---"
-          go version || true
-          echo "--- which go ---"
-          which go || true
-          echo "--- go env ---"
-          go env GOROOT GOMOD GOPATH || true
-          # Fail fast if runner has an ancient go that doesn't support modules
-          if ! go version 2>/dev/null | grep -Eo "go[0-9]+\.[0-9]+" | sed 's/go//' | awk -F. '{ if ($1==1 && $2<11) { exit 1 } }'; then
-            echo "go version is too old for modules (requires >= 1.11)" >&2
-            exit 1
-          fi
+          go-version: 1.20
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -56,44 +41,18 @@ jobs:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
 
-      - name: Assume privileged role
-        id: assume-priv
-        run: |
-          set -euo pipefail
-          if [ -z "${{ env.PRIVILEGED_ROLE_ARN }}" ]; then
-            echo "PRIVILEGED_ROLE_ARN is not set" >&2
-            exit 1
-          fi
-          CREDS_JSON=$(aws sts assume-role --role-arn "${{ env.PRIVILEGED_ROLE_ARN }}" --role-session-name github-actions || true)
-          if [ -z "$CREDS_JSON" ]; then
-            echo "failed to assume role ${{ env.PRIVILEGED_ROLE_ARN }}" >&2
-            exit 1
-          fi
-          AWS_ACCESS_KEY_ID=$(echo "$CREDS_JSON" | jq -r '.Credentials.AccessKeyId')
-          AWS_SECRET_ACCESS_KEY=$(echo "$CREDS_JSON" | jq -r '.Credentials.SecretAccessKey')
-          AWS_SESSION_TOKEN=$(echo "$CREDS_JSON" | jq -r '.Credentials.SessionToken')
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
-          echo "Assumed privileged role: ${{ env.PRIVILEGED_ROLE_ARN }}"
-
       - name: Get Go modules
-        run: |
-          set -euo pipefail
-          if [ -f tests/terratest/go.mod ]; then
-            (cd tests/terratest && go mod download)
-          else
-            echo "no go.mod found in tests/terratest" >&2
-            exit 1
-          fi
+        run: go mod download
+        working-directory: tests/terratest
 
       - name: Run Terratest
         id: terratest-test
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
+          ROLE_TO_ASSUME: ${{ env.ROLE_TO_ASSUME }}
         run: |
           set +e
-          (cd tests/terratest && go test -v . -timeout 60m) 2>&1 | tee test_output.txt
+          go test -v ./tests/terratest -timeout 60m 2>&1 | tee test_output.txt
           TEST_EXIT_CODE=${PIPESTATUS[0]}
 
           PASSED=$(grep -c "^--- PASS" test_output.txt | tr -d '[:space:]' || echo "0")
