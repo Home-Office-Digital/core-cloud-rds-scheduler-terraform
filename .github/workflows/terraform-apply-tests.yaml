@@ -33,6 +33,7 @@ jobs:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
 
+
       - name: Assume privileged role
         id: assume-priv
         run: |
@@ -46,7 +47,26 @@ jobs:
           echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
           echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
           echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+          # Ensure subsequent steps (terraform/terratest) use the privileged automation role
+          echo "TF_VAR_automation_role_arn=$PRIV_ROLE" >> $GITHUB_ENV
+          echo "ROLE_TO_ASSUME=$PRIV_ROLE" >> $GITHUB_ENV
           aws sts get-caller-identity
+
+
+      - name: CI diagnostics
+        run: |
+          set -euo pipefail
+          echo "=== caller identity ==="
+          aws sts get-caller-identity || true
+          echo "=== exported automation role (TF_VAR_automation_role_arn) ==="
+          echo "$TF_VAR_automation_role_arn"
+          ROLE_NAME="${TF_VAR_automation_role_arn##*/}"
+          echo "=== assume role policy for $ROLE_NAME ==="
+          aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json || true
+          echo "=== recent failed SSM automation executions ==="
+          aws ssm describe-automation-executions --filters Key=ExecutionStatus,Values=Failed --max-results 10 || true
+
+
 
       - name: Terraform init
         run: terraform init -input=false -no-color
@@ -55,6 +75,7 @@ jobs:
         id: terraform-test
         env:
           AWS_REGION: eu-west-2
+          ROLE_TO_ASSUME: ${{ env.ROLE_TO_ASSUME }}
           TF_VAR_name_prefix: test-rds-scheduler-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set +e
