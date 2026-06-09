@@ -5,7 +5,7 @@
 # - Does NOT depend on any real RDS/Aurora resources existing
 
 variables {
-  automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation"
+  automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-assumable"
 }
 
 run "apply_creates_expected_resources" {
