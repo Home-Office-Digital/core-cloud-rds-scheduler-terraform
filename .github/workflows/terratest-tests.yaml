@@ -41,6 +41,21 @@ jobs:
           aws-region: eu-west-2
           role-to-assume: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
 
+      - name: Assume privileged role
+        id: assume-priv
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y jq
+          PRIV_ROLE="arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-assumable"
+          CREDS_JSON=$(aws sts assume-role --role-arn "$PRIV_ROLE" --role-session-name github-actions)
+          AWS_ACCESS_KEY_ID=$(echo "$CREDS_JSON" | jq -r '.Credentials.AccessKeyId')
+          AWS_SECRET_ACCESS_KEY=$(echo "$CREDS_JSON" | jq -r '.Credentials.SecretAccessKey')
+          AWS_SESSION_TOKEN=$(echo "$CREDS_JSON" | jq -r '.Credentials.SessionToken')
+          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
+          aws sts get-caller-identity
+
       - name: Get Go modules
         run: go mod download
         working-directory: tests/terratest
