@@ -14,7 +14,7 @@ terraform {
 }
 
 provider "aws" {
-  # Region is expected to be set by the Terratest harness via env (AWS_REGION/AWS_DEFAULT_REGION)
+    # Region is expected to be set by the Terratest harness via env (AWS_REGION/AWS_DEFAULT_REGION)
 }
 
 variable "name_prefix" {

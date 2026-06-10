@@ -39,7 +39,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: eu-west-2
-          role-to-assume: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
+          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
 
       - name: Assume privileged role
         id: assume-priv

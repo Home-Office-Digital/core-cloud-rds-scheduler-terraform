@@ -1,7 +1,6 @@
 .terraform/
 .vscode/
 tests/terratest/terratest.test
-tests/terratest/terratest_output.txt
 
 # Ignore Python bytecode caches
 scripts/__pycache__/
