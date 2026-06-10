@@ -5,7 +5,7 @@ Terraform module that automatically stops and starts RDS instances and Aurora cl
 ## Usage
 ```hcl
 module "rds_scheduled_stop_start" {
-  source = "git::https://github.com/Home-Office-Digital/core-cloud-rds-scheduled-terraform.git?ref=v1.0.0"
+  source = "git::https://github.com/Home-Office-Digital/core-cloud-rds-scheduler-terraform.git?ref=v1.0.0"
 
   name_prefix        = "cc-rds-scheduler"
   automation_role_arn = aws_iam_role.ssm_rds_scheduler.arn
@@ -32,26 +32,28 @@ module "rds_scheduled_stop_start" {
 ## Architecture
 
 ```
-SSM State Manager (20 associations: 4 actions x 5 weekdays)
+SSM State Manager (20 associations: 4 action/type combinations × 5 weekdays)
 ├── RDS Instances (AWS managed documents)
 │   ├── AWS-StartRdsInstance  →  targets by tag-key "Schedule"  (MON-FRI)
 │   └── AWS-StopRdsInstance   →  targets by tag-key "Schedule"  (MON-FRI)
 │
 └── Aurora Clusters (custom automation document)
-    └── cc-rds-scheduler-aurora-cluster-scheduler
-        ├── Discovers clusters via DescribeDBClusters API
-        ├── Filters by "Schedule" tag
-        ├── Filters out unstoppable types (serverless, global, etc.)
-        └── Calls StartDBCluster / StopDBCluster
+  └── cc-rds-scheduler-aurora-cluster-scheduler
+    ├── Discovers clusters via DescribeDBClusters API
+    ├── Filters by "Schedule" tag
+    ├── Filters out unstoppable types (serverless, global, etc.)
+    └── Calls StartDBCluster / StopDBCluster
 ```
 
 ### Why 20 associations?
 
-SSM State Manager associations only support single day-of-week values (e.g. `MON`), not ranges (e.g. `MON-FRI`). Ranges are only supported for maintenance windows. The module uses `for_each` to create one association per weekday for each action (start/stop x instances/clusters = 4 actions x 5 days = 20).
+SSM State Manager associations only support single day-of-week values (e.g. `MON`), not ranges (e.g. `MON-FRI`). Ranges are only supported for maintenance windows. The module uses `for_each` to create one association per weekday for each action (start/stop × instances/clusters = 4 action/type combinations × 5 weekdays = 20).
+
+This design intentionally trades a small extra resource count for simple, predictable schedules (one association per day/action).
 
 ### SSM Cron Format
 
-SSM associations use **6-field cron** (seconds field is optional):
+SSM associations use a 6-field cron expression:
 
 ```
 cron(minutes hours day_of_month month day_of_week year)
