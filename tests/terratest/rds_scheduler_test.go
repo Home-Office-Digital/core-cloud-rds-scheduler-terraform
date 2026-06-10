@@ -133,13 +133,38 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 	})
 
 	t.Run("rds_association_execution_idempotent", func(t *testing.T) {
-		assocID, assocDocName := findAnyRDSAssociationByPrefix(t, ctx, ssmClient, namePrefix)
-		require.NotEmpty(t, assocID)
-		require.NotEmpty(t, assocDocName)
-		require.True(t, assocDocName == "AWS-StartRdsInstance" || assocDocName == "AWS-StopRdsInstance", "unexpected association document: %q", assocDocName)
+		startAssocID := findRDSAssociationByPrefixAndDocument(t, ctx, ssmClient, namePrefix, "AWS-StartRdsInstance")
+		stopAssocID := findRDSAssociationByPrefixAndDocument(t, ctx, ssmClient, namePrefix, "AWS-StopRdsInstance")
+		require.NotEmpty(t, startAssocID)
+		require.NotEmpty(t, stopAssocID)
 
-		require.NoError(t, runAssociationOnceWithRetry(ctx, ssmClient, assocID, 3, 10*time.Minute))
-		require.NoError(t, runAssociationOnceWithRetry(ctx, ssmClient, assocID, 3, 10*time.Minute))
+		rdsClient := newRDSClient(t, ctx, region)
+		instanceID, initialStatus := findStandaloneRDSInstanceByPrefix(t, ctx, rdsClient, namePrefix)
+		t.Logf("RDS association test setup: instance=%s initial_status=%s start_association=%s stop_association=%s", instanceID, initialStatus, startAssocID, stopAssocID)
+
+		normalized := strings.ToLower(initialStatus)
+		if normalized != "available" && normalized != "stopped" {
+			t.Logf("Instance %s is in transitional status %q; waiting for a stable state (available/stopped)", instanceID, initialStatus)
+			waitForDBInstanceStatus(t, ctx, rdsClient, instanceID, map[string]bool{"available": true, "stopped": true}, 15*time.Minute)
+			_, initialStatus = findStandaloneRDSInstanceByPrefix(t, ctx, rdsClient, namePrefix)
+			normalized = strings.ToLower(initialStatus)
+			t.Logf("Instance %s reached stable status %q", instanceID, initialStatus)
+		}
+
+		if normalized == "available" {
+			t.Logf("Instance %s is available, running stop then start associations", instanceID)
+			require.NoError(t, runAssociationOnceWithRetry(t, ctx, ssmClient, stopAssocID, 3, 10*time.Minute))
+			waitForDBInstanceStatus(t, ctx, rdsClient, instanceID, map[string]bool{"stopped": true}, 20*time.Minute)
+			require.NoError(t, runAssociationOnceWithRetry(t, ctx, ssmClient, startAssocID, 3, 10*time.Minute))
+			waitForDBInstanceStatus(t, ctx, rdsClient, instanceID, map[string]bool{"available": true}, 20*time.Minute)
+			return
+		}
+
+		t.Logf("Instance %s is stopped, running start then stop associations", instanceID)
+		require.NoError(t, runAssociationOnceWithRetry(t, ctx, ssmClient, startAssocID, 3, 10*time.Minute))
+		waitForDBInstanceStatus(t, ctx, rdsClient, instanceID, map[string]bool{"available": true}, 20*time.Minute)
+		require.NoError(t, runAssociationOnceWithRetry(t, ctx, ssmClient, stopAssocID, 3, 10*time.Minute))
+		waitForDBInstanceStatus(t, ctx, rdsClient, instanceID, map[string]bool{"stopped": true}, 20*time.Minute)
 	})
 }
 
@@ -205,16 +230,20 @@ func automationExecutionHasOutputKey(exec *ssm.GetAutomationExecutionOutput, key
 
 // runAssociationOnceWithRetry triggers an SSM association once and waits for completion,
 // retrying on transient failures.
-func runAssociationOnceWithRetry(ctx context.Context, client *ssm.Client, associationID string, maxAttempts int, timeout time.Duration) error {
+func runAssociationOnceWithRetry(t *testing.T, ctx context.Context, client *ssm.Client, associationID string, maxAttempts int, timeout time.Duration) error {
+	t.Helper()
+
 	if maxAttempts <= 0 {
 		maxAttempts = 1
 	}
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		t.Logf("Running SSM association %s (attempt %d/%d)", associationID, attempt, maxAttempts)
 		execID, err := triggerAssociationExecution(ctx, client, associationID)
 		if err != nil {
 			lastErr = err
+			t.Logf("StartAssociationsOnce failed for association %s on attempt %d/%d: %v", associationID, attempt, maxAttempts, err)
 			// SSM commonly throttles in constrained accounts.
 			errStr := err.Error()
 			if strings.Contains(errStr, "ThrottlingException") || strings.Contains(strings.ToLower(errStr), "rate exceeded") {
@@ -224,9 +253,12 @@ func runAssociationOnceWithRetry(ctx context.Context, client *ssm.Client, associ
 		} else {
 			if execID == "" {
 				lastErr = fmt.Errorf("StartAssociationsOnce returned empty execution id")
+				t.Logf("Association %s returned an empty execution ID on attempt %d/%d", associationID, attempt, maxAttempts)
 			} else if werr := waitForAssociationExecutionE(ctx, client, associationID, execID, timeout); werr == nil {
+				t.Logf("Association %s execution %s succeeded on attempt %d/%d", associationID, execID, attempt, maxAttempts)
 				return nil
 			} else {
+				t.Logf("Association %s execution %s failed on attempt %d/%d: %v", associationID, execID, attempt, maxAttempts, werr)
 				lastErr = werr
 			}
 		}
@@ -621,6 +653,14 @@ func newSSMClient(t *testing.T, ctx context.Context, region string) *ssm.Client 
 	return ssm.NewFromConfig(cfg)
 }
 
+// newRDSClient constructs an RDS client in the given region.
+func newRDSClient(t *testing.T, ctx context.Context, region string) *rds.Client {
+	t.Helper()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	require.NoError(t, err)
+	return rds.NewFromConfig(cfg)
+}
+
 // triggerAutomationExecution starts the given automation document once.
 //
 // Inputs:
@@ -694,10 +734,10 @@ func waitForAutomationExecution(t *testing.T, ctx context.Context, client *ssm.C
 	}
 }
 
-func findAnyRDSAssociationByPrefix(t *testing.T, ctx context.Context, client *ssm.Client, namePrefix string) (associationID, documentName string) {
+func findRDSAssociationByPrefixAndDocument(t *testing.T, ctx context.Context, client *ssm.Client, namePrefix, documentName string) string {
 	t.Helper()
 
-	// Only return AWS-managed RDS associations. Ignore Aurora automation associations entirely.
+	// Only return AWS-managed RDS associations for the requested document.
 	var nextToken *string
 	for {
 		out, err := client.ListAssociations(ctx, &ssm.ListAssociationsInput{
@@ -711,8 +751,8 @@ func findAnyRDSAssociationByPrefix(t *testing.T, ctx context.Context, client *ss
 				continue
 			}
 			name := awsv2.ToString(a.Name)
-			if name == "AWS-StartRdsInstance" || name == "AWS-StopRdsInstance" {
-				return awsv2.ToString(a.AssociationId), name
+			if name == documentName {
+				return awsv2.ToString(a.AssociationId)
 			}
 		}
 
@@ -722,8 +762,54 @@ func findAnyRDSAssociationByPrefix(t *testing.T, ctx context.Context, client *ss
 		nextToken = out.NextToken
 	}
 
-	t.Fatalf("no RDS association found with prefix %q (AWS-StartRdsInstance/AWS-StopRdsInstance)", namePrefix)
+	t.Fatalf("no RDS association found with prefix %q and document %q", namePrefix, documentName)
+	return ""
+}
+
+func findStandaloneRDSInstanceByPrefix(t *testing.T, ctx context.Context, client *rds.Client, namePrefix string) (instanceID, status string) {
+	t.Helper()
+
+	out, err := client.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{})
+	require.NoError(t, err)
+
+	for _, i := range out.DBInstances {
+		id := awsv2.ToString(i.DBInstanceIdentifier)
+		if !strings.HasPrefix(id, namePrefix) {
+			continue
+		}
+		if i.DBClusterIdentifier != nil && awsv2.ToString(i.DBClusterIdentifier) != "" {
+			continue
+		}
+		return id, awsv2.ToString(i.DBInstanceStatus)
+	}
+
+	t.Fatalf("no standalone RDS instance found with prefix %q", namePrefix)
 	return "", ""
+}
+
+func waitForDBInstanceStatus(t *testing.T, ctx context.Context, client *rds.Client, instanceID string, desired map[string]bool, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+
+	for {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for DB instance %s to reach one of %v", instanceID, desired)
+		}
+
+		out, err := client.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{
+			DBInstanceIdentifier: awsv2.String(instanceID),
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, out.DBInstances)
+
+		current := strings.ToLower(awsv2.ToString(out.DBInstances[0].DBInstanceStatus))
+		t.Logf("DB instance %s current status: %s (waiting for %v)", instanceID, current, desired)
+		if desired[current] {
+			return
+		}
+
+		time.Sleep(15 * time.Second)
+	}
 }
 
 // dumpAutomationExecutionJSON marshals the GetAutomationExecution output and logs it.
