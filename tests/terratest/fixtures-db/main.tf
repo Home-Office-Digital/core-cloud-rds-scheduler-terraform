@@ -189,10 +189,14 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
   # Enhanced monitoring requires an IAM role (MonitoringRoleARN), which may be blocked by org SCPs.
   monitoring_interval = 0
 
-  tags = merge(local.tags, {
+  # Don't apply the scheduler tag key to the Aurora *instance*.
+  # Aurora scheduling is handled via the cluster-level automation document,
+  # while AWS-StartRdsInstance/AWS-StopRdsInstance associations should target
+  # standalone RDS instances only.
+  tags = {
     Name    = "${var.name_prefix}-aurora-w-${random_id.suffix.hex}"
     Fixture = "terratest"
-  })
+  }
 }
 
 
