@@ -17,7 +17,8 @@ jobs:
     name: terraform test (apply)
     runs-on: ubuntu-latest
     env:
-      ROLE_TO_ASSUME: arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation
+      OIDC_ROLE_TO_ASSUME: ${{ vars.OIDC_ROLE_TO_ASSUME }}
+      PRIV_ROLE_TO_ASSUME: ${{ vars.PRIV_ROLE_TO_ASSUME }}
 
     steps:
       - name: Checkout
@@ -33,24 +34,23 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: eu-west-2
-          role-to-assume: ${{ env.ROLE_TO_ASSUME }}
+          role-to-assume: ${{ env.OIDC_ROLE_TO_ASSUME }}
 
       - name: Assume privileged role
         id: assume-priv
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.PRIV_ROLE_TO_ASSUME }}
+          aws-region: eu-west-2
+
+      - name: Export privileged role ARN for Terraform
+        id: export-priv-role
         run: |
-          set -euo pipefail
-          sudo apt-get update && sudo apt-get install -y jq
-          PRIV_ROLE="arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-assumable"
-          CREDS_JSON=$(aws sts assume-role --role-arn "$PRIV_ROLE" --role-session-name github-actions)
-          AWS_ACCESS_KEY_ID=$(echo "$CREDS_JSON" | jq -r '.Credentials.AccessKeyId')
-          AWS_SECRET_ACCESS_KEY=$(echo "$CREDS_JSON" | jq -r '.Credentials.SecretAccessKey')
-          AWS_SESSION_TOKEN=$(echo "$CREDS_JSON" | jq -r '.Credentials.SessionToken')
-          echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $GITHUB_ENV
-          echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> $GITHUB_ENV
-          # Ensure subsequent steps (terraform/terratest) use the privileged automation role
+          # use the job-level privileged-role env (sourced from repo vars)
+          PRIV_ROLE="$PRIV_ROLE_TO_ASSUME"
           echo "TF_VAR_automation_role_arn=$PRIV_ROLE" >> $GITHUB_ENV
-          echo "ROLE_TO_ASSUME=$PRIV_ROLE" >> $GITHUB_ENV
+          # expose the privileged role ARN as a step output for later steps
+          echo "privileged_role_arn=$PRIV_ROLE" >> $GITHUB_OUTPUT
           aws sts get-caller-identity
 
       - name: Terraform init
@@ -60,10 +60,13 @@ jobs:
         id: terraform-test
         env:
           AWS_REGION: eu-west-2
-          ROLE_TO_ASSUME: ${{ env.ROLE_TO_ASSUME }}
+          PRIV_ROLE_TO_ASSUME: ${{ env.PRIV_ROLE_TO_ASSUME }}
           TF_VAR_name_prefix: test-rds-scheduler-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set +e
+          # Ensure tests that read ROLE_TO_ASSUME get the runtime privileged ARN
+          export ROLE_TO_ASSUME="${PRIV_ROLE_TO_ASSUME}"
+          echo "Using ROLE_TO_ASSUME=$ROLE_TO_ASSUME"
           terraform test -test-directory=./tests/apply -verbose 2>&1 | tee test_output.txt
           TEST_EXIT_CODE=${PIPESTATUS[0]}
 
