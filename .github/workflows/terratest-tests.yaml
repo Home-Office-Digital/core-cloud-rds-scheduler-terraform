@@ -49,6 +49,7 @@ jobs:
           role-to-assume: ${{ env.PRIV_ROLE_TO_ASSUME }}
           aws-region: eu-west-2
           role-chaining: true
+          role-skip-session-tagging: true
 
       - name: Export privileged role ARN for Terratest
         id: export-priv-role
