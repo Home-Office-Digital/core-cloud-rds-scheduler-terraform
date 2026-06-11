@@ -42,6 +42,7 @@ jobs:
         with:
           role-to-assume: ${{ env.PRIV_ROLE_TO_ASSUME }}
           aws-region: eu-west-2
+          role-chaining: true
 
       - name: Export privileged role ARN for Terraform
         id: export-priv-role
