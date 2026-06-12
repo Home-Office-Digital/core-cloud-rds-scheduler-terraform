@@ -12,7 +12,7 @@ run "apply_creates_expected_resources" {
   command = apply
 
   variables {
-    name_prefix = "test-rds-scheduler"
+    name_prefix         = "test-rds-scheduler"
     automation_role_arn = var.automation_role_arn
     schedule_tag_key    = "Schedule"
 
