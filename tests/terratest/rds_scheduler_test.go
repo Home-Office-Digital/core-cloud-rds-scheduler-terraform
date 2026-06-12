@@ -61,6 +61,9 @@ func TestRDSScheduler_RuntimeExecutions(t *testing.T) {
 			"(?i)InvalidDBClusterStateFault:.*\\bis in (stopping|starting|stopped) state\\b": "retry: cluster is transitioning",
 			"(?i)InvalidDBInstanceState:.*\\bis in (stopping|starting|stopped) state\\b":     "retry: instance is transitioning",
 			"(?i)DBInstance is not in available state":                                       "retry: instance not available",
+			// Retry when AWS reports the cluster/instance is being deleted — transient race vs prior cleanup
+			"(?i)InvalidDBClusterStateFault:.*\\bis (being deleted|deleting)\\b":            "retry: cluster is being deleted",
+			"(?i)unexpected state 'deleting'":                                                "retry: instance is deleting",
 		},
 		MaxRetries:         90,
 		TimeBetweenRetries: 30 * time.Second,
@@ -421,6 +424,10 @@ func preTestCleanupLeftovers(t *testing.T, region string, timeout time.Duration)
 				DBClusterIdentifier: awsv2.String(id),
 				SkipFinalSnapshot:   awsv2.Bool(true),
 			})
+
+			// Wait for deletion to complete before returning so tests won't race with in-progress deletes.
+			// Limit wait to a short window per-resource to avoid large pre-test delays.
+			_ = waitForClusterDeletion(ctx, rdsClient, id, 5*time.Minute)
 		}
 	}
 
@@ -450,7 +457,70 @@ func preTestCleanupLeftovers(t *testing.T, region string, timeout time.Duration)
 				DBInstanceIdentifier: awsv2.String(id),
 				SkipFinalSnapshot:    awsv2.Bool(true),
 			})
+
+			// Wait for instance deletion to complete to avoid create/delete races in subsequent test runs.
+			_ = waitForInstanceDeletion(ctx, rdsClient, id, 3*time.Minute)
 		}
+	}
+}
+
+// waitForClusterDeletion polls DescribeDBClusters until the cluster no longer exists or timeout.
+func waitForClusterDeletion(ctx context.Context, client *rds.Client, clusterID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for cluster %s deletion", clusterID)
+		}
+		out, err := client.DescribeDBClusters(ctx, &rds.DescribeDBClustersInput{DBClusterIdentifier: &clusterID})
+		if err != nil {
+			// If not found, deletion completed.
+			if strings.Contains(err.Error(), "DBClusterNotFoundFault") {
+				return nil
+			}
+			// Unknown error: wait a bit and retry.
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if len(out.DBClusters) == 0 {
+			return nil
+		}
+		// If cluster is in deleting state, keep waiting.
+		status := strings.ToLower(awsv2.ToString(out.DBClusters[0].Status))
+		if status == "deleting" {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		// Otherwise, break and return: resource still exists in another state.
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// waitForInstanceDeletion polls DescribeDBInstances until the instance no longer exists or timeout.
+func waitForInstanceDeletion(ctx context.Context, client *rds.Client, instanceID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for instance %s deletion", instanceID)
+		}
+		out, err := client.DescribeDBInstances(ctx, &rds.DescribeDBInstancesInput{DBInstanceIdentifier: &instanceID})
+		if err != nil {
+			// If not found, deletion completed.
+			if strings.Contains(err.Error(), "DBInstanceNotFound") || strings.Contains(err.Error(), "DBInstanceNotFoundFault") {
+				return nil
+			}
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if len(out.DBInstances) == 0 {
+			return nil
+		}
+		// If instance is deleting, keep waiting.
+		status := strings.ToLower(awsv2.ToString(out.DBInstances[0].DBInstanceStatus))
+		if status == "deleting" {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		time.Sleep(2 * time.Second)
 	}
 }
 
