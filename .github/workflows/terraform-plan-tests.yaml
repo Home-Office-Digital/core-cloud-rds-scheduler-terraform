@@ -30,36 +30,20 @@ jobs:
 
       - name: Terraform test
         id: terraform-test
-        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
-        with:
-          working-directory: tests/plan
-          sonar-host-url: ${{ secrets.sonar_host_url }}
-          sonar-token: ${{ secrets.sonar_token }}
-
-      - name: Compute test results
-        id: compute-test-results
-        if: always()
-        shell: bash
         run: |
-          set -euo pipefail
-          INPUT_FILE="tests/plan/test-results.xml"
-          PASSED=0
-          FAILED=0
-          if [ -f "$INPUT_FILE" ]; then
-            PASSED=$(grep -c "<testcase" "$INPUT_FILE" || true)
-            FAILED=$(grep -c "<failure" "$INPUT_FILE" || true)
-          fi
+          set +e
+          terraform test -verbose \
+            -test-directory=tests/plan \
+            2>&1 | tee test_output.txt
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
 
-          # Map composite step outcome to exit code
-          if [ "${{ steps.terraform-test.outcome }}" = "success" ]; then
-            EXIT_CODE=0
-          else
-            EXIT_CODE=1
-          fi
+          PASSED=$(grep -c "^  run " test_output.txt | tr -d '[:space:]' || echo "0")
+          FAILED=$(grep -c "FAIL" test_output.txt | tr -d '[:space:]' || echo "0")
 
           echo "passed=${PASSED}" >> "$GITHUB_OUTPUT"
           echo "failed=${FAILED}" >> "$GITHUB_OUTPUT"
-          echo "exit_code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${TEST_EXIT_CODE}" >> "$GITHUB_OUTPUT"
+          exit $TEST_EXIT_CODE
 
       - name: Post PR comment
         if: always() && github.event_name == 'pull_request'
