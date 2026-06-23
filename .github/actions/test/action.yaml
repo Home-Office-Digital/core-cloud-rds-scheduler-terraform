@@ -43,6 +43,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         echo "Running terraform init in ${PWD}"
+        unset TF_DATA_DIR || true
         terraform init -backend=false
 
     - name: Quick provider discovery
@@ -50,13 +51,14 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
+        unset TF_DATA_DIR || true
         echo "TF_PLUGIN_CACHE_DIR=${TF_PLUGIN_CACHE_DIR:-<unset>}"
         echo "TF_DATA_DIR=${TF_DATA_DIR:-<unset>}"
         echo "Listing global plugin dir (if present): $HOME/.terraform.d/plugins"
         ls -la "$HOME/.terraform.d/plugins" || true
         echo "Listing workspace .terraform providers (if present): .terraform/providers"
         ls -la .terraform/providers || true
-        echo "Terraform providers output:" 
+        echo "Terraform providers output:"
         terraform providers || true
 
     - name: Run Terraform Tests
