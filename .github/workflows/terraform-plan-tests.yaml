@@ -136,6 +136,23 @@ jobs:
           chmod +x "$GLOBAL_DEST"/* || true
           echo "Global provider installed to $GLOBAL_DEST"
 
+      - name: Prepare provider files for composite action
+        shell: bash
+        run: |
+          echo "RUNNER_TEMP=$RUNNER_TEMP"
+          echo "Copying extracted provider into runner temp and global plugin dir"
+          SRC="${{ github.workspace }}/tests/plan/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+          if [ -d "$SRC" ]; then
+            mkdir -p "$RUNNER_TEMP/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+            cp -r "$SRC"/* "$RUNNER_TEMP/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64/" || true
+            echo "Copied to $RUNNER_TEMP/.terraform/providers/..."
+          else
+            echo "Source $SRC missing"
+            ls -la "${{ github.workspace }}/tests/plan/.terraform/providers" || true
+          fi
+          echo "Listing $RUNNER_TEMP/.terraform.."
+          ls -la "$RUNNER_TEMP/.terraform" || true
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
@@ -147,6 +164,21 @@ jobs:
           working-directory: tests/plan
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
           sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
+
+      - name: Pre-composite provider visibility debug
+        if: always()
+        shell: bash
+        run: |
+          echo "==== HOME .terraform.d/plugins ===="
+          ls -la "$HOME/.terraform.d/plugins" || true
+          find "$HOME/.terraform.d/plugins" -maxdepth 5 -type f -print || true
+          echo "==== RUNNER_TEMP ===="
+          echo "RUNNER_TEMP=$RUNNER_TEMP"
+          ls -la "$RUNNER_TEMP" || true
+          find "$RUNNER_TEMP" -maxdepth 3 -type f -print || true
+          echo "==== tests/plan .terraform ===="
+          ls -la "${{ github.workspace }}/tests/plan/.terraform" || true
+          find "${{ github.workspace }}/tests/plan/.terraform" -maxdepth 4 -type f -print || true
 
       - name: Compute test results
         id: compute-test-results
