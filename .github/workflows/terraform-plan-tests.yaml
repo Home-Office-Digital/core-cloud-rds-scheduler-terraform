@@ -68,19 +68,6 @@ jobs:
         working-directory: tests/plan
         run: terraform init -backend=false
 
-      - name: Debug provider cache and .terraform (tests/plan)
-        if: always()
-        shell: bash
-        working-directory: tests/plan
-        run: |
-          echo "TF_PLUGIN_CACHE_DIR=${TF_PLUGIN_CACHE_DIR}"
-          echo "== cache listing =="
-          ls -la "$TF_PLUGIN_CACHE_DIR" || echo "cache missing"
-          echo "== cache tree =="
-          find "$TF_PLUGIN_CACHE_DIR" -type f -print || true
-          echo "== tests/plan/.terraform =="
-          ls -la .terraform || echo ".terraform missing"
-
       - name: Terraform validate (tests/plan)
         shell: bash
         working-directory: tests/plan
@@ -184,31 +171,11 @@ jobs:
           echo "Action working dir content:"
           ls -la "$ACTION_DIR" || true
 
-      - name: Detailed provider binary debug
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "\n== GLOBAL PLUGIN DIR =="
-          GLOBAL="$HOME/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
-          ls -la "$GLOBAL" || echo "global dir missing"
-          find "$GLOBAL" -maxdepth 2 -type f -print || true
-          echo "\n== RUNNER TEMP PROVIDERS =="
-          RT="$RUNNER_TEMP/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
-          ls -la "$RT" || echo "runner-temp dir missing"
-          find "$RT" -maxdepth 2 -type f -print || true
-          echo "\n== FILE + STAT INFO =="
-          for f in "$GLOBAL"/* "$RT"/*; do
-            if [ -e "$f" ]; then
-              echo "----- $f -----"
-              file "$f" || true
-              stat -c '%A %u:%g %s %n' "$f" || true
-            fi
-          done
+  # detailed provider debug removed
 
       - name: Terraform test
         id: terraform-test
-        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
+        uses: ./.github/actions/test
         env:
           TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/tests/plan/terraform-providers-cache
           TF_DATA_DIR: ${{ github.workspace }}/tests/plan
@@ -218,20 +185,7 @@ jobs:
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
           sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
 
-      - name: Pre-composite provider visibility debug
-        if: always()
-        shell: bash
-        run: |
-          echo "==== HOME .terraform.d/plugins ===="
-          ls -la "$HOME/.terraform.d/plugins" || true
-          find "$HOME/.terraform.d/plugins" -maxdepth 5 -type f -print || true
-          echo "==== RUNNER_TEMP ===="
-          echo "RUNNER_TEMP=$RUNNER_TEMP"
-          ls -la "$RUNNER_TEMP" || true
-          find "$RUNNER_TEMP" -maxdepth 3 -type f -print || true
-          echo "==== tests/plan .terraform ===="
-          ls -la "${{ github.workspace }}/tests/plan/.terraform" || true
-          find "${{ github.workspace }}/tests/plan/.terraform" -maxdepth 4 -type f -print || true
+  # pre-composite provider visibility debug removed
 
       - name: Compute test results
         id: compute-test-results

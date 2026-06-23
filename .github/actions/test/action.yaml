@@ -1,0 +1,108 @@
+name: "Terraform Test"
+description: "Run Terraform tests when .tftest.hcl files are present and optionally publish SonarQube results"
+
+inputs:
+  sonar-host-url:
+    description: "SonarQube server URL"
+    required: false
+    default: ''
+  sonar-token:
+    description: "SonarQube authentication token"
+    required: false
+    default: ''
+  working-directory:
+    description: "Directory containing Terraform code and tests"
+    required: false
+    default: '.'
+
+outputs:
+  has-tests:
+    description: "Whether Terraform tests were detected"
+    value: ${{ steps.detect_terraform_tests.outputs.has_tests }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Detect Terraform Tests
+      id: detect_terraform_tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if find . -type f -name "*.tftest.hcl" | grep -q .; then
+          echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          echo "Terraform tests detected. Running test steps."
+        else
+          echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          echo "No Terraform tests detected. Skipping Terraform test steps."
+        fi
+
+    - name: Run Terraform Tests
+      if: steps.detect_terraform_tests.outputs.has_tests == 'true'
+      id: terraform_test
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: terraform test -junit-xml=test-results.xml
+      continue-on-error: true
+
+    - name: Convert Terraform JUnit To SonarQube Generic Test Report
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: python3 "${{ github.action_path }}/scripts/terraform_junit_to_sonar.py" --input test-results.xml --output sonar-test-results.xml
+
+    - name: Convert Terraform JUnit To SonarQube Generic Coverage Report
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: python3 "${{ github.action_path }}/scripts/terraform_junit_to_sonar_coverage.py" --input test-results.xml --output sonar-coverage.xml
+
+    - name: Validate SonarQube Test Report Contains Test Cases
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        test -f sonar-test-results.xml
+        grep -q "<testExecutions " sonar-test-results.xml
+
+    - name: Validate SonarQube Coverage Report Contains Coverage Root
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        test -f sonar-coverage.xml
+        grep -q "<coverage " sonar-coverage.xml
+
+    - name: Print Generated Reports
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        cat test-results.xml || true
+        cat sonar-test-results.xml || true
+        cat sonar-coverage.xml || true
+
+    - name: SonarQube Scan
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      uses: sonarsource/sonarqube-scan-action@v7
+      with:
+        args: >
+          -Dsonar.projectBaseDir=${{ inputs.working-directory }}
+          -Dsonar.exclusions=**/.terraform/**,**/test-results.xml,**/sonar-test-results.xml,**/sonar-coverage.xml,**/.scannerwork/**
+          -Dsonar.sources=.
+          -Dsonar.inclusions=**/*.tf,**/*.tfvars,tests/**/*.tftest.hcl
+          -Dsonar.terraform.file.suffixes=.tf,.tfvars,.tftest.hcl
+          -Dsonar.tests=tests
+          -Dsonar.test.inclusions=tests/**/*.tftest.hcl
+          -Dsonar.test.exclusions=tests/sonar_test_anchor.py
+          -Dsonar.text.inclusions=tests/**/*.tftest.hcl
+          -Dsonar.testExecutionReportPaths=sonar-test-results.xml
+          -Dsonar.coverageReportPaths=sonar-coverage.xml
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+
+    - name: Fail If Terraform Tests Failed
+      if: steps.detect_terraform_tests.outputs.has_tests == 'true' && steps.terraform_test.outcome == 'failure'
+      shell: bash
+      run: exit 1
