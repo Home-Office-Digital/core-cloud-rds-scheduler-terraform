@@ -43,17 +43,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-tf-providers-
 
-      - name: Mirror providers into cache if missing
+      - name: Mirror providers into cache (overwrite)
         shell: bash
         working-directory: tests/plan
         run: |
-          if [ ! -d terraform-providers-cache ] || [ -z "$(ls -A terraform-providers-cache 2>/dev/null)" ]; then
-            echo "Mirroring providers to ./terraform-providers-cache"
-            mkdir -p terraform-providers-cache
-            terraform providers mirror ./terraform-providers-cache
-          else
-            echo "Providers cache already present"
-          fi
+          echo "Mirroring providers to ./terraform-providers-cache (overwriting)"
+          rm -rf terraform-providers-cache || true
+          mkdir -p terraform-providers-cache
+          terraform providers mirror ./terraform-providers-cache
+          echo "== full cache listing =="
+          find terraform-providers-cache -type f -print || true
 
       - name: Debug provider cache and .terraform (tests/plan)
         if: always()
@@ -64,7 +63,7 @@ jobs:
           echo "== cache listing =="
           ls -la "$TF_PLUGIN_CACHE_DIR" || echo "cache missing"
           echo "== cache tree =="
-          find "$TF_PLUGIN_CACHE_DIR" -maxdepth 4 -type f -print || true
+          find "$TF_PLUGIN_CACHE_DIR" -type f -print || true
           echo "== tests/plan/.terraform =="
           ls -la .terraform || echo ".terraform missing"
 
@@ -91,6 +90,7 @@ jobs:
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         env:
           TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/tests/plan/terraform-providers-cache
+          TF_LOG: DEBUG
         with:
           working-directory: tests/plan
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
