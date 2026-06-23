@@ -50,7 +50,9 @@ runs:
       run: |
         set -euo pipefail
         if [ -n "${{ inputs.test-directory }}" ]; then
-          terraform test -junit-xml=test-results.xml -test-directory="${{ inputs.test-directory }}" || true
+          OUT_DIR="${{ inputs.test-directory }}"
+          mkdir -p "$OUT_DIR"
+          terraform test -junit-xml="$OUT_DIR/test-results.xml" -test-directory="${{ inputs.test-directory }}" || true
         else
           terraform test -junit-xml=test-results.xml || true
         fi
@@ -61,39 +63,69 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        python3 "${{ github.action_path }}/../../scripts/terraform_junit_to_sonar.py" --input test-results.xml --output sonar-test-results.xml
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          IN_FILE="${{ inputs.test-directory }}/test-results.xml"
+          OUT_FILE="${{ inputs.test-directory }}/sonar-test-results.xml"
+        else
+          IN_FILE="test-results.xml"
+          OUT_FILE="sonar-test-results.xml"
+        fi
+        python3 "${{ github.action_path }}/../../scripts/terraform_junit_to_sonar.py" --input "$IN_FILE" --output "$OUT_FILE"
 
     - name: Convert Terraform JUnit To SonarQube Generic Coverage Report
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        python3 "${{ github.action_path }}/../../scripts/terraform_junit_to_sonar_coverage.py" --input test-results.xml --output sonar-coverage.xml
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          IN_FILE="${{ inputs.test-directory }}/test-results.xml"
+          OUT_FILE="${{ inputs.test-directory }}/sonar-coverage.xml"
+        else
+          IN_FILE="test-results.xml"
+          OUT_FILE="sonar-coverage.xml"
+        fi
+        python3 "${{ github.action_path }}/../../scripts/terraform_junit_to_sonar_coverage.py" --input "$IN_FILE" --output "$OUT_FILE"
 
     - name: Validate SonarQube Test Report Contains Test Cases
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        test -f sonar-test-results.xml
-        grep -q "<testExecutions " sonar-test-results.xml
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          FILE="${{ inputs.test-directory }}/sonar-test-results.xml"
+        else
+          FILE="sonar-test-results.xml"
+        fi
+        test -f "$FILE"
+        grep -q "<testExecutions " "$FILE"
 
     - name: Validate SonarQube Coverage Report Contains Coverage Root
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        test -f sonar-coverage.xml
-        grep -q "<coverage " sonar-coverage.xml
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          FILE="${{ inputs.test-directory }}/sonar-coverage.xml"
+        else
+          FILE="sonar-coverage.xml"
+        fi
+        test -f "$FILE"
+        grep -q "<coverage " "$FILE"
 
     - name: Print Generated Reports
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        cat test-results.xml || true
-        cat sonar-test-results.xml || true
-        cat sonar-coverage.xml || true
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          cat "${{ inputs.test-directory }}/test-results.xml" || true
+          cat "${{ inputs.test-directory }}/sonar-test-results.xml" || true
+          cat "${{ inputs.test-directory }}/sonar-coverage.xml" || true
+        else
+          cat test-results.xml || true
+          cat sonar-test-results.xml || true
+          cat sonar-coverage.xml || true
+        fi
 
     - name: SonarQube Scan
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
