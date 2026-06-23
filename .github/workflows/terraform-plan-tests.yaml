@@ -118,6 +118,16 @@ jobs:
           unzip -o "$ZIP" -d "$DEST" || true
           chmod +x "$DEST"/* || true
           echo "Provider extracted to $DEST"
+          # Ensure Terraform can find the plugin by creating common expected names
+          BIN=$(ls "$DEST"/terraform-provider-* 2>/dev/null | head -n1 || true)
+          if [ -n "$BIN" ]; then
+            echo "Found binary $BIN, creating alternate names"
+            cp -f "$BIN" "$DEST/terraform-provider-aws_v6.45.0" || true
+            cp -f "$BIN" "$DEST/terraform-provider-aws_v6.45.0_linux_amd64" || true
+            cp -f "$BIN" "$DEST/terraform-provider-aws_v6.45.0_x5" || true
+            chmod +x "$DEST"/* || true
+            ls -la "$DEST" || true
+          fi
 
       - name: Install provider into global terraform plugins dir
         shell: bash
@@ -135,6 +145,15 @@ jobs:
           unzip -o "$ZIP" -d "$GLOBAL_DEST" || true
           chmod +x "$GLOBAL_DEST"/* || true
           echo "Global provider installed to $GLOBAL_DEST"
+          # Create alternate names expected by Terraform
+          GBIN=$(ls "$GLOBAL_DEST"/terraform-provider-* 2>/dev/null | head -n1 || true)
+          if [ -n "$GBIN" ]; then
+            cp -f "$GBIN" "$GLOBAL_DEST/terraform-provider-aws_v6.45.0" || true
+            cp -f "$GBIN" "$GLOBAL_DEST/terraform-provider-aws_v6.45.0_linux_amd64" || true
+            cp -f "$GBIN" "$GLOBAL_DEST/terraform-provider-aws_v6.45.0_x5" || true
+            chmod +x "$GLOBAL_DEST"/* || true
+            ls -la "$GLOBAL_DEST" || true
+          fi
 
       - name: Prepare provider files for composite action
         shell: bash
