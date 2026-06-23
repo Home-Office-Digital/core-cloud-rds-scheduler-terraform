@@ -48,6 +48,7 @@ jobs:
         run: |
           if [ ! -d terraform-providers-cache ] || [ -z "$(ls -A terraform-providers-cache 2>/dev/null)" ]; then
             echo "Mirroring providers to ./terraform-providers-cache"
+            mkdir -p terraform-providers-cache
             terraform providers mirror ./terraform-providers-cache
           else
             echo "Providers cache already present"
