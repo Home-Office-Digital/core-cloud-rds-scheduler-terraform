@@ -106,6 +106,7 @@ jobs:
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         env:
           TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/tests/plan/terraform-providers-cache
+          TF_DATA_DIR: ${{ github.workspace }}/tests/plan
           TF_LOG: DEBUG
         with:
           working-directory: tests/plan
