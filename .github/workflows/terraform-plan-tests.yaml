@@ -35,52 +35,11 @@ jobs:
       - name: Copy Sonar properties to tests/plan
         run: cp sonar-project.properties tests/plan/
 
-      - name: Run terraform tests
+      - name: Run terraform tests and publish results (local action)
         id: terraform-test
-        shell: bash
-        run: |
-          set +e
-          terraform test -junit-xml=tests/plan/test-results.xml -test-directory=tests/plan 2>&1 | tee tests/plan/test_output.txt
-          TEST_EXIT_CODE=${PIPESTATUS[0]}
-          echo "exit_code=${TEST_EXIT_CODE}" >> "$GITHUB_OUTPUT"
-          if [ "${TEST_EXIT_CODE}" -ne 0 ]; then exit "${TEST_EXIT_CODE}"; fi
-
-      - name: Convert Terraform JUnit To SonarQube Generic Test Report
-        if: always()
-        shell: bash
-        run: |
-          python3 https://raw.githubusercontent.com/Home-Office-Digital/core-cloud-workflow-terraform-actions/main/scripts/terraform_junit_to_sonar.py --input tests/plan/test-results.xml --output tests/plan/sonar-test-results.xml
-
-      - name: Convert Terraform JUnit To SonarQube Generic Coverage Report
-        if: always()
-        shell: bash
-        run: |
-          python3 https://raw.githubusercontent.com/Home-Office-Digital/core-cloud-workflow-terraform-actions/main/scripts/terraform_junit_to_sonar_coverage.py --input tests/plan/test-results.xml --output tests/plan/sonar-coverage.xml
-
-      - name: Print Generated Reports
-        if: always()
-        shell: bash
-        run: |
-          cat tests/plan/test-results.xml || true
-          cat tests/plan/sonar-test-results.xml || true
-          cat tests/plan/sonar-coverage.xml || true
-
-      - name: SonarQube Scan
-        if: always()
-        uses: sonarsource/sonarqube-scan-action@v7
+        uses: ./.github/actions/test
         with:
-          args: >
-            -Dsonar.projectBaseDir=tests/plan
-            -Dsonar.exclusions=**/.terraform/**,**/test-results.xml,**/sonar-test-results.xml,**/sonar-coverage.xml,**/.scannerwork/**
-            -Dsonar.sources=.
-            -Dsonar.inclusions=**/*.tf,**/*.tfvars,tests/**/*.tftest.hcl
-            -Dsonar.terraform.file.suffixes=.tf,.tfvars,.tftest.hcl
-            -Dsonar.tests=tests
-            -Dsonar.test.inclusions=tests/**/*.tftest.hcl
-            -Dsonar.test.exclusions=tests/sonar_test_anchor.py
-            -Dsonar.text.inclusions=tests/**/*.tftest.hcl
-            -Dsonar.testExecutionReportPaths=sonar-test-results.xml
-            -Dsonar.coverageReportPaths=sonar-coverage.xml
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          working-directory: tests/plan
+          test-directory: tests/plan
+          sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
