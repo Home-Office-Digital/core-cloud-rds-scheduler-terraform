@@ -34,20 +34,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: tests/plan/terraform-providers-cache
-          key: ${{ runner.os }}-tf-providers-${{ hashFiles('tests/plan/.terraform.lock.hcl') }}
+          key: ${{ runner.os }}-tf-providers-${{ hashFiles('.terraform.lock.hcl') }}
           restore-keys: |
             ${{ runner.os }}-tf-providers-
 
       - name: Mirror providers into cache (overwrite)
         shell: bash
-        working-directory: tests/plan
         run: |
-          echo "Mirroring providers to ./terraform-providers-cache (overwriting)"
-          rm -rf terraform-providers-cache || true
-          mkdir -p terraform-providers-cache
-          terraform providers mirror ./terraform-providers-cache
+          MIRROR_DIR="${{ github.workspace }}/tests/plan/terraform-providers-cache"
+          echo "Mirroring providers to ${MIRROR_DIR} (overwriting) from repo root"
+          rm -rf "${MIRROR_DIR}" || true
+          mkdir -p "${MIRROR_DIR}"
+          terraform providers mirror "${MIRROR_DIR}"
           echo "== full cache listing =="
-          find terraform-providers-cache -type f -print || true
+          find "${MIRROR_DIR}" -type f -print || true
 
       - name: Configure Terraform CLI to use the provider mirror
         shell: bash
