@@ -22,6 +22,10 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
 
+      - name: Terraform init (repo root)
+        shell: bash
+        run: terraform init -backend=false
+
       - name: Terraform init
         shell: bash
         working-directory: tests/plan
