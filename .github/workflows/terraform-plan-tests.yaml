@@ -60,9 +60,6 @@ jobs:
             filesystem_mirror {
               path = "${MIRROR_PATH}"
             }
-            direct {
-              exclude = ["*"]
-            }
           }
           EOF
 
