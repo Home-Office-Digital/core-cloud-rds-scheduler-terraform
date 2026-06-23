@@ -29,6 +29,11 @@ jobs:
         shell: bash
         run: terraform init -backend=false
 
+      - name: Terraform init (tests/plan)
+        shell: bash
+        working-directory: tests/plan
+        run: terraform init -backend=false
+
       - name: Terraform validate
         run: terraform validate
 
