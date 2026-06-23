@@ -39,7 +39,7 @@ jobs:
         id: terraform-test
         uses: ./.github/actions/test
         with:
-          working-directory: tests/plan
+          working-directory: .
           test-directory: tests/plan
           sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
           sonar-token: ${{ secrets.SONAR_TOKEN }}
