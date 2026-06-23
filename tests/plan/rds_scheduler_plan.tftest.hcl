@@ -1,15 +1,6 @@
 # This tells Terraform: "Don't connect to real AWS. Fake it."
 # Without this, you'd need AWS credentials to run the tests.
 
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
-
 mock_provider "aws" {}
 
 
