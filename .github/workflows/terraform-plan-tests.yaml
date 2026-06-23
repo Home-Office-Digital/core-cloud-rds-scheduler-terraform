@@ -23,6 +23,8 @@ jobs:
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
 
       - name: Terraform init
+        shell: bash
+        working-directory: tests/plan
         run: terraform init -backend=false
 
       - name: Terraform validate
