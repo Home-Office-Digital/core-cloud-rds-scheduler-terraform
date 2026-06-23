@@ -119,6 +119,23 @@ jobs:
           chmod +x "$DEST"/* || true
           echo "Provider extracted to $DEST"
 
+      - name: Install provider into global terraform plugins dir
+        shell: bash
+        run: |
+          MIRROR_DIR="${{ github.workspace }}/tests/plan/terraform-providers-cache"
+          ZIP=$(find "$MIRROR_DIR" -type f -name "terraform-provider-aws_*_linux_amd64.zip" | head -n1 || true)
+          if [ -z "$ZIP" ]; then
+            echo "No provider zip found in mirror:"
+            find "$MIRROR_DIR" -type f -print || true
+            exit 0
+          fi
+          GLOBAL_DEST="$HOME/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+          mkdir -p "$GLOBAL_DEST"
+          echo "Extracting $ZIP to $GLOBAL_DEST"
+          unzip -o "$ZIP" -d "$GLOBAL_DEST" || true
+          chmod +x "$GLOBAL_DEST"/* || true
+          echo "Global provider installed to $GLOBAL_DEST"
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
