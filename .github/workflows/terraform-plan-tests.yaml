@@ -24,12 +24,12 @@ jobs:
 
       - name: Terraform init (repo root)
         shell: bash
-        run: terraform init -backend=false
+        run: terraform init -backend=false -upgrade
 
       - name: Terraform init
         shell: bash
         working-directory: tests/plan
-        run: terraform init -backend=false
+        run: terraform init -backend=false -upgrade
 
       - name: Terraform validate
         run: terraform validate
