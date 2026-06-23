@@ -18,6 +18,7 @@ jobs:
     env:
       SONAR_HOST_URL_EFFECTIVE: ${{ secrets.SONAR_HOST_URL }}
       SONAR_TOKEN_EFFECTIVE: ${{ secrets.SONAR_TOKEN }}
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/tests/plan/terraform-providers-cache
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -53,6 +54,19 @@ jobs:
           else
             echo "Providers cache already present"
           fi
+
+      - name: Debug provider cache and .terraform (tests/plan)
+        if: always()
+        shell: bash
+        working-directory: tests/plan
+        run: |
+          echo "TF_PLUGIN_CACHE_DIR=${TF_PLUGIN_CACHE_DIR}"
+          echo "== cache listing =="
+          ls -la "$TF_PLUGIN_CACHE_DIR" || echo "cache missing"
+          echo "== cache tree =="
+          find "$TF_PLUGIN_CACHE_DIR" -maxdepth 4 -type f -print || true
+          echo "== tests/plan/.terraform =="
+          ls -la .terraform || echo ".terraform missing"
 
       - name: Terraform validate
         run: terraform validate
