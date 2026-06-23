@@ -172,6 +172,18 @@ jobs:
           echo "Listing $RUNNER_TEMP/.terraform.."
           ls -la "$RUNNER_TEMP/.terraform" || true
 
+      - name: Prepare action working directory copy
+        shell: bash
+        run: |
+          ACTION_DIR="$RUNNER_TEMP/action_workdir"
+          echo "Preparing action working dir: $ACTION_DIR"
+          rm -rf "$ACTION_DIR" || true
+          mkdir -p "$ACTION_DIR"
+          # Copy tests/plan contents (including .terraform) into action workdir
+          cp -a "${{ github.workspace }}/tests/plan/." "$ACTION_DIR/" || true
+          echo "Action working dir content:"
+          ls -la "$ACTION_DIR" || true
+
       - name: Detailed provider binary debug
         if: always()
         shell: bash
@@ -194,7 +206,7 @@ jobs:
             fi
           done
 
-      - name: Terraform test
+    - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         env:
@@ -202,7 +214,7 @@ jobs:
           TF_DATA_DIR: ${{ github.workspace }}/tests/plan
           TF_LOG: DEBUG
         with:
-          working-directory: tests/plan
+      working-directory: ${{ runner.temp }}/action_workdir
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
           sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
 
