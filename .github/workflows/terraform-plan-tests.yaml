@@ -34,6 +34,25 @@ jobs:
         working-directory: tests/plan
         run: terraform init -backend=false
 
+      - name: Cache Terraform providers (tests/plan)
+        uses: actions/cache@v4
+        with:
+          path: tests/plan/terraform-providers-cache
+          key: ${{ runner.os }}-tf-providers-${{ hashFiles('tests/plan/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-providers-
+
+      - name: Mirror providers into cache if missing
+        shell: bash
+        working-directory: tests/plan
+        run: |
+          if [ ! -d terraform-providers-cache ] || [ -z "$(ls -A terraform-providers-cache 2>/dev/null)" ]; then
+            echo "Mirroring providers to ./terraform-providers-cache"
+            terraform providers mirror ./terraform-providers-cache
+          else
+            echo "Providers cache already present"
+          fi
+
       - name: Terraform validate
         run: terraform validate
 
@@ -55,6 +74,8 @@ jobs:
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
+        env:
+          TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/tests/plan/terraform-providers-cache
         with:
           working-directory: tests/plan
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
