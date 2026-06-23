@@ -15,6 +15,9 @@ jobs:
   terraform-plan-tests:
     name: Terraform Plan Tests
     runs-on: ubuntu-latest
+    env:
+      SONAR_HOST_URL_EFFECTIVE: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN_EFFECTIVE: ${{ secrets.SONAR_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -55,8 +58,8 @@ jobs:
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         with:
           working-directory: tests/plan
-          sonar-host-url: ${{ secrets.sonar_host_url }}
-          sonar-token: ${{ secrets.sonar_token }}
+          sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
+          sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
 
       - name: Compute test results
         id: compute-test-results
