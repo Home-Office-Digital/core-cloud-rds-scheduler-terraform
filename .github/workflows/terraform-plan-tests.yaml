@@ -35,10 +35,11 @@ jobs:
       - name: Copy Sonar properties to tests/plan
         run: cp sonar-project.properties tests/plan/
 
+
       - name: Run terraform tests and publish results
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         with:
-          working-directory: tests/plan
+          working-directory: .
           sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
           sonar-token: ${{ secrets.SONAR_TOKEN }}
