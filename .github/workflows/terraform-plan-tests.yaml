@@ -43,6 +43,7 @@ jobs:
             echo "Wrote tests/plan/sonar-project.properties with projectKey=${KEY}"
           fi
 
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
@@ -57,6 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # read the JUnit produced by the composite action in tests/plan
           INPUT_FILE="tests/plan/test-results.xml"
           PASSED=0
           FAILED=0
@@ -81,9 +83,9 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const passed = '${{ steps.terraform-test.outputs.passed }}' || '0';
-            const failed = '${{ steps.terraform-test.outputs.failed }}' || '0';
-            const exitCode = '${{ steps.terraform-test.outputs.exit_code }}';
+            const passed = '${{ steps.compute-test-results.outputs.passed }}' || '0';
+            const failed = '${{ steps.compute-test-results.outputs.failed }}' || '0';
+            const exitCode = '${{ steps.compute-test-results.outputs.exit_code }}';
             const status = exitCode === '0' ? '✅ pass' : '❌ fail';
             const overall = exitCode === '0'
               ? `✅ Overall: passed=${passed}, failed=0, errored=0, skipped=0`

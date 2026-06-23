@@ -201,7 +201,6 @@ run "instance_associations_target_by_tag" {
 }
 
 
-
 # TEST 6: IAM role ARN is passed to all 4 associations.Every association needs the IAM role so SSM can assume it.
 
 run "role_arn_passed_to_all_associations" {
@@ -312,7 +311,7 @@ run "association_and_document_checks" {
 
   assert {
     condition     = aws_ssm_association.start_rds_instances["MON"].automation_target_parameter_name == "InstanceId"
-    error_message = "RDS instance associations should set automation_target_parameter_name to InstanceId"
+    error_message = "RDS associations should set automation_target_parameter_name to InstanceId"
   }
 
   # The automation document content should expose the expected outputs and
