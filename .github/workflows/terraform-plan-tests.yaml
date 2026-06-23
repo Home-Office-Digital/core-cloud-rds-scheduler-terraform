@@ -28,6 +28,21 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
+      - name: Ensure Sonar projectKey for scanner
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p tests/plan
+          if [ -f sonar-project.properties ]; then
+            cp sonar-project.properties tests/plan/sonar-project.properties
+            echo "Copied repo sonar-project.properties to tests/plan/sonar-project.properties"
+          else
+            # Replace slash with colon to form a safe Sonar project key
+            KEY="${GITHUB_REPOSITORY//\//:}"
+            echo "sonar.projectKey=${KEY}" > tests/plan/sonar-project.properties
+            echo "Wrote tests/plan/sonar-project.properties with projectKey=${KEY}"
+          fi
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
