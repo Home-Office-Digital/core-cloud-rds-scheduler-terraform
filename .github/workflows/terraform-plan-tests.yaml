@@ -153,6 +153,28 @@ jobs:
           echo "Listing $RUNNER_TEMP/.terraform.."
           ls -la "$RUNNER_TEMP/.terraform" || true
 
+      - name: Detailed provider binary debug
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "\n== GLOBAL PLUGIN DIR =="
+          GLOBAL="$HOME/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+          ls -la "$GLOBAL" || echo "global dir missing"
+          find "$GLOBAL" -maxdepth 2 -type f -print || true
+          echo "\n== RUNNER TEMP PROVIDERS =="
+          RT="$RUNNER_TEMP/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+          ls -la "$RT" || echo "runner-temp dir missing"
+          find "$RT" -maxdepth 2 -type f -print || true
+          echo "\n== FILE + STAT INFO =="
+          for f in "$GLOBAL"/* "$RT"/*; do
+            if [ -e "$f" ]; then
+              echo "----- $f -----"
+              file "$f" || true
+              stat -c '%A %u:%g %s %n' "$f" || true
+            fi
+          done
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
