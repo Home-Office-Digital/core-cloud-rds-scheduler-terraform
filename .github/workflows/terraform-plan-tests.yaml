@@ -101,6 +101,24 @@ jobs:
             echo "Wrote tests/plan/sonar-project.properties with projectKey=${KEY}"
           fi
 
+      - name: Populate tests/plan .terraform with provider binary
+        shell: bash
+        run: |
+          MIRROR_DIR="${{ github.workspace }}/tests/plan/terraform-providers-cache"
+          echo "Looking for provider zip under ${MIRROR_DIR}"
+          ZIP=$(find "$MIRROR_DIR" -type f -name "terraform-provider-aws_*_linux_amd64.zip" | head -n1 || true)
+          if [ -z "$ZIP" ]; then
+            echo "No provider zip found in mirror:"
+            find "$MIRROR_DIR" -type f -print || true
+            exit 0
+          fi
+          echo "Found provider zip: $ZIP"
+          DEST="${{ github.workspace }}/tests/plan/.terraform/providers/registry.terraform.io/hashicorp/aws/6.45.0/linux_amd64"
+          mkdir -p "$DEST"
+          unzip -o "$ZIP" -d "$DEST" || true
+          chmod +x "$DEST"/* || true
+          echo "Provider extracted to $DEST"
+
       - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
