@@ -32,4 +32,6 @@ jobs:
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         with:
-          test-directory: tests/plan
+          working-directory: tests/plan
+          sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
