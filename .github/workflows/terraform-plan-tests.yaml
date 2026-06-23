@@ -206,7 +206,7 @@ jobs:
             fi
           done
 
-    - name: Terraform test
+      - name: Terraform test
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         env:
@@ -214,7 +214,7 @@ jobs:
           TF_DATA_DIR: ${{ github.workspace }}/tests/plan
           TF_LOG: DEBUG
         with:
-      working-directory: ${{ runner.temp }}/action_workdir
+          working-directory: ${{ runner.temp }}/action_workdir
           sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
           sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
 
