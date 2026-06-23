@@ -37,6 +37,25 @@ runs:
           echo "No Terraform tests detected. Skipping Terraform test steps."
         fi
 
+    - name: Copy prepared providers into action working dir
+      if: steps.detect_terraform_tests.outputs.has_tests == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        unset TF_DATA_DIR || true
+        unset TF_PLUGIN_CACHE_DIR || true
+        SRC="$RUNNER_TEMP/.terraform/providers"
+        DEST=".terraform/providers"
+        if [ -d "$SRC" ]; then
+          echo "Copying provider files from $SRC to $DEST"
+          mkdir -p "$DEST"
+          cp -a "$SRC/." "$DEST/" || true
+          echo "Copied providers into action working dir"
+          ls -la "$DEST" || true
+        else
+          echo "No prepared providers at $SRC"
+        fi
+
     - name: Terraform init (action working-dir)
       if: steps.detect_terraform_tests.outputs.has_tests == 'true'
       shell: bash
