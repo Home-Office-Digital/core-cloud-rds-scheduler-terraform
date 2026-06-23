@@ -25,14 +25,9 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
 
-      - name: Terraform init (repo root)
-        shell: bash
-        run: terraform init -backend=false -upgrade
-
       - name: Terraform init
         shell: bash
-        working-directory: tests/plan
-        run: terraform init -backend=false -upgrade
+        run: terraform init -backend=false
 
       - name: Terraform validate
         run: terraform validate
@@ -51,7 +46,6 @@ jobs:
             echo "sonar.projectKey=${KEY}" > tests/plan/sonar-project.properties
             echo "Wrote tests/plan/sonar-project.properties with projectKey=${KEY}"
           fi
-
 
       - name: Terraform test
         id: terraform-test
