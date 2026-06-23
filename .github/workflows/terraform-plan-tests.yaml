@@ -29,6 +29,11 @@ jobs:
         shell: bash
         run: terraform init -backend=false -upgrade
 
+      - name: Terraform init
+        shell: bash
+        working-directory: tests/plan
+        run: terraform init -backend=false -upgrade
+
       - name: Terraform validate
         run: terraform validate
 
@@ -50,8 +55,11 @@ jobs:
 
       - name: Terraform test
         id: terraform-test
-        shell: bash
-        run: terraform test -test-directory=./tests/plan/tests -junit-xml=tests/plan/test-results.xml
+        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
+        with:
+          working-directory: tests/plan
+          sonar-host-url: ${{ env.SONAR_HOST_URL_EFFECTIVE }}
+          sonar-token: ${{ env.SONAR_TOKEN_EFFECTIVE }}
 
       - name: Compute test results
         id: compute-test-results
