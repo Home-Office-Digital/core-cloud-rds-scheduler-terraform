@@ -43,3 +43,13 @@ jobs:
           test-directory: tests/plan
           sonar-host-url: ${{ secrets.SONAR_HOST_URL }}
           sonar-token: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Debug Sonar context
+        if: always()
+        run: |
+          echo "action outputs.has-tests=${{ steps.terraform-test.outputs.has-tests }}"
+          if [ -n "${{ secrets.SONAR_HOST_URL }}" ]; then echo "SONAR_HOST_URL: present"; else echo "SONAR_HOST_URL: missing"; fi
+          if [ -n "${{ secrets.SONAR_TOKEN }}" ]; then echo "SONAR_TOKEN: present"; else echo "SONAR_TOKEN: missing"; fi
+          echo "Files at repo root:"; ls -la sonar-test-results.xml sonar-coverage.xml || true
+          echo "Files in tests/plan:"; ls -la tests/plan/sonar-test-results.xml tests/plan/sonar-coverage.xml || true
+          echo "Preview sonar-test-results.xml (root):"; sed -n '1,120p' sonar-test-results.xml || true
