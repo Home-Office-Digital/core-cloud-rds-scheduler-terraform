@@ -133,6 +133,33 @@ runs:
           cat sonar-coverage.xml || true
         fi
 
+    - name: Ensure Sonar report paths at repository root
+      if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
+      shell: bash
+      run: |
+        # Try to copy sonar reports from the test-directory (if provided) into the repo root
+        if [ -n "${{ inputs.test-directory }}" ]; then
+          SRC_TEST_DIR="${{ github.workspace }}/${{ inputs.test-directory }}"
+          if [ -f "$SRC_TEST_DIR/sonar-test-results.xml" ]; then
+            cp "$SRC_TEST_DIR/sonar-test-results.xml" "$GITHUB_WORKSPACE/sonar-test-results.xml" || true
+          fi
+          if [ -f "$SRC_TEST_DIR/sonar-coverage.xml" ]; then
+            cp "$SRC_TEST_DIR/sonar-coverage.xml" "$GITHUB_WORKSPACE/sonar-coverage.xml" || true
+          fi
+        fi
+
+        # Also attempt to copy from the working-directory
+        SRC_WD="${{ github.workspace }}/${{ inputs.working-directory }}"
+        if [ -f "$SRC_WD/sonar-test-results.xml" ]; then
+          cp "$SRC_WD/sonar-test-results.xml" "$GITHUB_WORKSPACE/sonar-test-results.xml" || true
+        fi
+        if [ -f "$SRC_WD/sonar-coverage.xml" ]; then
+          cp "$SRC_WD/sonar-coverage.xml" "$GITHUB_WORKSPACE/sonar-coverage.xml" || true
+        fi
+
+        echo "Reports at repo root:"
+        ls -la sonar-test-results.xml sonar-coverage.xml || true
+
     - name: SonarQube Scan
       if: always() && steps.detect_terraform_tests.outputs.has_tests == 'true' && inputs.sonar-token != '' && inputs.sonar-host-url != ''
       uses: sonarsource/sonarqube-scan-action@v7
