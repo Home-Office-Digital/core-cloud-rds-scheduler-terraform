@@ -35,9 +35,9 @@ jobs:
       - name: Copy Sonar properties to tests/plan
         run: cp sonar-project.properties tests/plan/
 
-      - name: Run terraform tests and publish results (local action)
+      - name: Run terraform tests and publish results (remote action branch)
         id: terraform-test
-        uses: ./.github/actions/test
+        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@feature/CCL-8198-test-action-tweak
         with:
           working-directory: .
           test-directory: tests/plan
