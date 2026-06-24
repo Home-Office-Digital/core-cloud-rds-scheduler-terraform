@@ -28,10 +28,6 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - name: Terraform init (tests/plan)
-        run: terraform init -backend=false
-        working-directory: tests/plan
-
       - name: Run terraform tests and publish results (remote action branch)
         id: terraform-test
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@feature/CCL-8198-test-action-tweak
