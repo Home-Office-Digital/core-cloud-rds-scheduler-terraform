@@ -113,7 +113,7 @@ resource "aws_db_instance" "rds" {
   deletion_protection          = false
   apply_immediately            = true
   multi_az                     = false
-  backup_retention_period      = 1
+  backup_retention_period      = 10
   auto_minor_version_upgrade   = true
   copy_tags_to_snapshot        = true
   storage_encrypted            = true
@@ -157,7 +157,7 @@ resource "aws_rds_cluster" "aurora" {
   vpc_security_group_ids              = [aws_security_group.db.id]
   skip_final_snapshot                 = true
   deletion_protection                 = false
-  backup_retention_period             = 1
+  backup_retention_period             = 10
   preferred_backup_window             = "03:00-04:00"
   preferred_maintenance_window        = "sun:05:00-sun:06:00"
   apply_immediately                   = true
