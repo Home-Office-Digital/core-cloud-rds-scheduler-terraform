@@ -30,7 +30,7 @@ jobs:
 
       - name: Terraform init (tests/plan)
         run: terraform init -backend=false
-        working-directory: tests/planß
+        working-directory: tests/plan
 
       - name: Run terraform tests and publish results (remote action branch)
         id: terraform-test
