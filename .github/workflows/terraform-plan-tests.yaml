@@ -28,9 +28,9 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - name: Run terraform tests and publish results (remote action branch)
+      - name: Terraform test
         id: terraform-test
-        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@feature/CCL-8198-test-action-tweak
+        uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         with:
           working-directory: .
           test-directory: tests/plan
