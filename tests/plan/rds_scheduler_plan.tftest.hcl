@@ -1,5 +1,6 @@
 # This tells Terraform: "Don't connect to real AWS. Fake it."
 # Without this, you'd need AWS credentials to run the tests.
+
 mock_provider "aws" {}
 
 
