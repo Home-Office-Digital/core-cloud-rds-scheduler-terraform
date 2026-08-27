@@ -1,0 +1,37 @@
+version: 2
+updates:
+    # Enable Github Action updates
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "daily"
+      commit-message:
+          prefix: "chore(GHA)"
+      labels:
+          - "dependencies"
+          - "patch"
+          - "actions"
+
+    # Enable TF updates for Terraform Projects
+    - package-ecosystem: "terraform"
+      directory: "/"
+      schedule:
+          interval: "daily"
+      commit-message:
+          prefix: "chore(TF)"
+      labels:
+          - "dependencies"
+          - "patch"
+          - "terraform"
+
+    # Enable PIP updates for Python Projects
+    - package-ecosystem: "pip"
+      directory: "/"
+      schedule:
+          interval: "daily"
+      commit-message:
+          prefix: "chore(Python)"
+      labels:
+          - "dependencies"
+          - "patch"
+          - "python"
