@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "terraform"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore:"
+    reviewers:
+      - "Home-Office-Digital/core-cloud-ai-ops"
+    labels: []
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore:"
+    reviewers:
+      - "Home-Office-Digital/core-cloud-ai-ops"
+    labels: []
