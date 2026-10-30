@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   sonarqube-scanner:
-    uses: Home-Office-Digital/core-cloud-workflow-sonarqube-scan/.github/workflows/sonarqube-scan.yaml@6338df7443d336b94e90ff8c71fba9ed258b1654
+    uses: Home-Office-Digital/core-cloud-workflow-sonarqube-scan/.github/workflows/sonarqube-scan.yaml@43cc08418ced802ad127b754acd51f16b75bccbe
     secrets:
       sonar_token: ${{ secrets.sonar_token }}
       sonar_host_url: ${{ secrets.sonar_host_url }}
