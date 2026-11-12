@@ -37,14 +37,14 @@ jobs:
           terraform_wrapper: false
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-region: eu-west-2
           role-to-assume: ${{ env.OIDC_ROLE_TO_ASSUME }}
 
       - name: Assume privileged role
         id: assume-priv
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.PRIV_ROLE_TO_ASSUME }}
           aws-region: eu-west-2
