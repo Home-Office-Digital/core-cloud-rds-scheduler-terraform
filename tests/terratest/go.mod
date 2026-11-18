@@ -3,7 +3,7 @@ module github.com/Home-Office-Digital/core-cloud-rds-scheduler-terraform/tests/t
 go 1.26.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.47.4
+	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/aws/aws-sdk-go-v2/service/rds v1.131.1
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.81.0
@@ -47,7 +47,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.0 // indirect
-	github.com/aws/smithy-go v1.28.6 // indirect
+	github.com/aws/smithy-go v1.28.9 // indirect
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
