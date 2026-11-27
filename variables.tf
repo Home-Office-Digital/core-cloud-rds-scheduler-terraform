@@ -136,3 +136,18 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "global_tags" {
+  type        = map(string)
+  description = "Base tags sourced from the GLOBAL_TAGS variable (JSON)."
+
+  validation {
+    condition = try(alltrue([
+      for key in [
+        "cost-centre", "account-code", "portfolio-id", "project-id",
+        "service-id", "owner-business", "budget-holder", "source-repo",
+      ] : trimspace(var.global_tags[key]) != ""
+    ]), false)
+    error_message = "global_tags must provide non-empty values for all required audit tags except environment-type, which is set by the module."
+  }
+}

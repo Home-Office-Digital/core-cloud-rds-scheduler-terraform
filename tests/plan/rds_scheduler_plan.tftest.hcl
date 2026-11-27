@@ -9,6 +9,61 @@ mock_provider "aws" {}
 variables {
   name_prefix         = "cc-test-scheduler"
   automation_role_arn = "arn:aws:iam::123456789012:role/test-role"
+  global_tags = {
+    cost-centre    = "1000000"
+    account-code   = "100000"
+    portfolio-id   = "test-portfolio"
+    project-id     = "test-project"
+    service-id     = "test-service"
+    owner-business = "test-owner"
+    budget-holder  = "test@example.com"
+    source-repo    = "https://github.com/Home-Office-Digital/core-cloud-rds-scheduler-terraform"
+  }
+}
+
+run "global_tags_apply_with_empty_resource_tags" {
+  command = plan
+
+  variables {
+    tags = {}
+  }
+
+  assert {
+    condition = alltrue([
+      for resource_tags in concat(
+        [aws_ssm_document.aurora_cluster_scheduler.tags],
+        [for association in aws_ssm_association.start_rds_instances : association.tags],
+        [for association in aws_ssm_association.stop_rds_instances : association.tags],
+        [for association in aws_ssm_association.start_aurora_clusters : association.tags],
+        [for association in aws_ssm_association.stop_aurora_clusters : association.tags],
+      ) : resource_tags == var.global_tags
+    ])
+    error_message = "The document and every association should receive global_tags when tags is empty"
+  }
+}
+
+run "resource_tags_extend_and_override_global_tags" {
+  command = plan
+
+  variables {
+    tags = {
+      cost-centre = "2000000"
+      Test        = "true"
+    }
+  }
+
+  assert {
+    condition = alltrue([
+      for resource_tags in concat(
+        [aws_ssm_document.aurora_cluster_scheduler.tags],
+        [for association in aws_ssm_association.start_rds_instances : association.tags],
+        [for association in aws_ssm_association.stop_rds_instances : association.tags],
+        [for association in aws_ssm_association.start_aurora_clusters : association.tags],
+        [for association in aws_ssm_association.stop_aurora_clusters : association.tags],
+      ) : resource_tags == merge(var.global_tags, var.tags)
+    ])
+    error_message = "The document and every association should retain global tags, add resource tags, and prefer resource tags on collisions"
+  }
 }
 
 # TEST 1: Basic plan succeeds
