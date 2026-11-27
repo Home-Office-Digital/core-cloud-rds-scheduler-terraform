@@ -87,6 +87,7 @@ The IAM policy restricts stop/start to resources with this tag — untagged reso
 |---|---|---|
 | `name_prefix` | Prefix for all resource names | — (required) |
 | `automation_role_arn` | IAM role ARN for SSM to assume | — (required) |
+| `global_tags` | Base audit tags applied to module-created resources | — (required) |
 | `schedule_tag_key` | Tag key for opt-in | `Schedule` |
 | `start_rds_hour` | UTC hour to start instances | `8` |
 | `start_rds_minute` | UTC minute to start instances | `0` |
@@ -110,7 +111,7 @@ This repo has two Terraform test suites:
 
 - **Apply tests** in `tests/apply/rds_scheduler_apply.tftest.hcl`
   - Use the real AWS provider and `command = apply`, so they **create real AWS resources**.
-  - Require AWS credentials and a configured AWS region.
+  - Require AWS credentials, a configured AWS region, and `TF_VAR_global_tags` set to valid audit-tag JSON (the same value used for `GLOBAL_TAGS` in CI).
   - Intended for CI environments with an isolated test account.
 
 Run all Terraform tests:
@@ -125,7 +126,7 @@ Run only plan tests (recommended locally):
 terraform test -verbose -test-directory=tests/plan
 ```
 
-Run only apply tests (requires AWS credentials/region):
+Run only apply tests (requires AWS credentials/region and `TF_VAR_global_tags`):
 
 ```bash
 terraform test -verbose -test-directory=tests/apply
