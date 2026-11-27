@@ -26,10 +26,15 @@ jobs:
         run: terraform init -backend=false
 
       - name: Terraform validate
+        env:
+          GLOBAL_TAGS: ${{ vars.GLOBAL_TAGS }}
+          TF_VAR_global_tags: ${{ vars.GLOBAL_TAGS }}
         run: terraform validate
 
       - name: Terraform test
         id: terraform-test
+        env:
+          GLOBAL_TAGS: ${{ vars.GLOBAL_TAGS }}
         uses: Home-Office-Digital/core-cloud-workflow-terraform-actions/actions/test@main
         with:
           working-directory: .

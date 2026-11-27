@@ -9,6 +9,16 @@ mock_provider "aws" {}
 variables {
   name_prefix         = "cc-test-scheduler"
   automation_role_arn = "arn:aws:iam::123456789012:role/test-role"
+  global_tags = {
+    cost-centre    = "1000000"
+    account-code   = "100000"
+    portfolio-id   = "test-portfolio"
+    project-id     = "test-project"
+    service-id     = "test-service"
+    owner-business = "test-owner"
+    budget-holder  = "test@example.com"
+    source-repo    = "https://github.com/Home-Office-Digital/core-cloud-rds-scheduler-terraform"
+  }
 }
 
 # TEST 1: Basic plan succeeds

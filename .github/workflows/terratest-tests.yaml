@@ -67,6 +67,8 @@ jobs:
         id: terratest-test
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
+          GLOBAL_TAGS: ${{ vars.GLOBAL_TAGS }}
+          TF_VAR_global_tags: ${{ vars.GLOBAL_TAGS }}
           PRIV_ROLE_TO_ASSUME: ${{ env.PRIV_ROLE_TO_ASSUME }}
         working-directory: tests/terratest
         run: |

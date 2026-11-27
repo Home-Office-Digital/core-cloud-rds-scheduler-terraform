@@ -16,6 +16,7 @@
 
 locals {
   weekdays = toset(["MON", "TUE", "WED", "THU", "FRI"])
+  tags     = merge(var.global_tags, var.tags)
 }
 
 # ------------------------------------------------------------------------------
@@ -25,6 +26,7 @@ locals {
 
 resource "aws_ssm_association" "start_rds_instances" {
   for_each = local.weekdays
+  tags     = local.tags
 
   name                = "AWS-StartRdsInstance"
   association_name    = "${var.name_prefix}-start-rds-instances-${lower(each.key)}"
@@ -45,6 +47,7 @@ resource "aws_ssm_association" "start_rds_instances" {
 
 resource "aws_ssm_association" "stop_rds_instances" {
   for_each = local.weekdays
+  tags     = local.tags
 
   name                = "AWS-StopRdsInstance"
   association_name    = "${var.name_prefix}-stop-rds-instances-${lower(each.key)}"
@@ -70,6 +73,7 @@ resource "aws_ssm_association" "stop_rds_instances" {
 
 resource "aws_ssm_association" "start_aurora_clusters" {
   for_each = local.weekdays
+  tags     = local.tags
 
   name                             = aws_ssm_document.aurora_cluster_scheduler.name
   association_name                 = "${var.name_prefix}-start-aurora-clusters-${lower(each.key)}"
@@ -90,6 +94,7 @@ resource "aws_ssm_association" "start_aurora_clusters" {
 
 resource "aws_ssm_association" "stop_aurora_clusters" {
   for_each = local.weekdays
+  tags     = local.tags
 
   name                             = aws_ssm_document.aurora_cluster_scheduler.name
   association_name                 = "${var.name_prefix}-stop-aurora-clusters-${lower(each.key)}"
@@ -117,7 +122,7 @@ resource "aws_ssm_document" "aurora_cluster_scheduler" {
   name            = "${var.name_prefix}-aurora-cluster-scheduler"
   document_type   = "Automation"
   document_format = "JSON"
-  tags            = var.tags
+  tags            = local.tags
 
   content = jsonencode({
     schemaVersion = "0.3"

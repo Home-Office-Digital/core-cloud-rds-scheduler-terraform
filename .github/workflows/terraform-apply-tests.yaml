@@ -62,6 +62,8 @@ jobs:
         id: terraform-test
         env:
           AWS_REGION: eu-west-2
+          GLOBAL_TAGS: ${{ vars.GLOBAL_TAGS }}
+          TF_VAR_global_tags: ${{ vars.GLOBAL_TAGS }}
           PRIV_ROLE_TO_ASSUME: ${{ env.PRIV_ROLE_TO_ASSUME }}
           TF_VAR_name_prefix: test-rds-scheduler-${{ github.run_id }}-${{ github.run_attempt }}
         run: |

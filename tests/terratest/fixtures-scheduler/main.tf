@@ -23,6 +23,10 @@ variable "automation_role_arn" {
   type        = string
 }
 
+variable "global_tags" {
+  description = "Base tags sourced from the GLOBAL_TAGS variable (JSON)."
+  type        = map(string)
+}
 variable "schedule_tag_key" {
   description = "Tag key used to opt resources into scheduling."
   type        = string
@@ -42,6 +46,7 @@ module "rds_scheduler" {
   name_prefix         = var.name_prefix
   automation_role_arn = var.automation_role_arn
   schedule_tag_key    = var.schedule_tag_key
+  global_tags         = var.global_tags
 
   # This fixture exists purely to provision the production module resources.
   # We still manually trigger the association and automation document from the

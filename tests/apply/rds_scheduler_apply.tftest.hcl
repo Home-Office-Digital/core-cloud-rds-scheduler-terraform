@@ -6,6 +6,16 @@
 
 variables {
   automation_role_arn = "arn:aws:iam::741448916464:role/cc-ssm-rds-scheduled-stop-start-role-test-automation"
+  global_tags = {
+    cost-centre    = "1000000"
+    account-code   = "100000"
+    portfolio-id   = "test-portfolio"
+    project-id     = "test-project"
+    service-id     = "test-service"
+    owner-business = "test-owner"
+    budget-holder  = "test@example.com"
+    source-repo    = "https://github.com/Home-Office-Digital/core-cloud-rds-scheduler-terraform"
+  }
 }
 
 run "apply_creates_expected_resources" {
